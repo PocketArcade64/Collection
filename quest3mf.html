@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokémon Quest → 3MF Converter</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #141a2e; --panel2: #1b2340; --ink: #e8ecf6;
+    --dim: #9aa5c0; --accent: #ffd54f; --accent2: #b388ff; --ok: #7ee08a; --err: #ff8a80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    padding: 1rem; max-width: 1100px; margin-inline: auto;
+  }
+  h1 { font-size: 1.3rem; margin: 0.2rem 0 0.2rem; color: var(--accent); }
+  .sub { color: var(--dim); margin-bottom: 1rem; font-size: 0.85rem; }
+  .cols { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1 1 340px; min-width: 320px; }
+  .panel { background: var(--panel); border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 1rem; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.6rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.05em; }
+  #dropzone {
+    border: 2px dashed #3a4670; border-radius: 10px; padding: 1.4rem; text-align: center;
+    color: var(--dim); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  #dropzone.hover { border-color: var(--accent); background: rgba(255,213,79,0.06); color: var(--ink); }
+  #dex-search {
+    width: 100%; padding: 0.5rem 0.7rem; border-radius: 6px; border: 1px solid #3a4670;
+    background: var(--panel2); color: var(--ink); font-size: 0.95rem;
+  }
+  #dex-list { max-height: 230px; overflow-y: auto; margin-top: 0.5rem; border-radius: 6px; }
+  .dex-item { padding: 0.35rem 0.7rem; cursor: pointer; border-radius: 4px; }
+  .dex-item:hover { background: var(--panel2); }
+  .dex-item.sel { background: var(--accent2); color: #14161c; font-weight: 600; }
+  label.opt { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; color: var(--dim); }
+  label.opt input[type=number] { width: 5.5rem; padding: 0.25rem 0.4rem; border-radius: 4px; border: 1px solid #3a4670; background: var(--panel2); color: var(--ink); }
+  button {
+    background: var(--accent); color: #14161c; border: 0; border-radius: 6px; font-weight: 700;
+    padding: 0.5rem 1.1rem; cursor: pointer; font-size: 0.95rem;
+  }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.small { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+  button.ghost { background: var(--panel2); color: var(--ink); }
+  #log {
+    font: 12px/1.5 Consolas, monospace; background: #0d1226; border-radius: 8px;
+    padding: 0.6rem 0.8rem; max-height: 160px; overflow-y: auto; white-space: pre-wrap;
+  }
+  #log .err { color: var(--err); } #log .ok { color: var(--ok); } #log .dim { color: var(--dim); }
+  .card {
+    background: var(--panel2); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.6rem;
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  }
+  .card .name { font-weight: 700; }
+  .card .stats { color: var(--dim); font-size: 0.8rem; flex: 1 1 auto; }
+  .swatches { display: flex; gap: 2px; flex-wrap: wrap; max-width: 220px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25); }
+  #preview-wrap { position: relative; }
+  #preview { width: 100%; height: 380px; background: #0d1226; border-radius: 10px; display: block; touch-action: none; }
+  #preview-label { position: absolute; top: 0.5rem; left: 0.8rem; color: var(--dim); font-size: 0.8rem; pointer-events: none; }
+  .hint { color: var(--dim); font-size: 0.78rem; margin-top: 0.4rem; }
+  a { color: var(--accent2); }
+</style>
+</head>
+<body>
+<h1>Pokémon Quest → 3MF Converter</h1>
+<div class="sub">Bakes each voxel face's texture color to a flat per-triangle material (3MF core spec) — ready for multi-color slicing in Bambu Studio / OrcaSlicer / PrusaSlicer.</div>
+
+<div class="cols">
+  <div class="col">
+    <div class="panel">
+      <h2>Option 1 — Pick from GitHub</h2>
+      <input id="dex-search" type="text" placeholder="Search 426 models… (e.g. Pikachu)" disabled>
+      <div id="dex-list"></div>
+      <label class="opt"><input type="checkbox" id="gh-shiny"> Shiny (separate model for base species, texture swap for pq-models)</label>
+      <button id="gh-convert" disabled>Convert selected</button>
+      <div class="hint" id="gh-status">Loading questdex from GitHub…</div>
+    </div>
+
+    <div class="panel">
+      <h2>Option 2 — Drop local files</h2>
+      <div id="dropzone">Drop a model folder here (or click to pick files)<br>
+        <span style="font-size:0.78rem">needs the .obj + .mtl + .png(s) together; multiple folders fine</span>
+      </div>
+      <input type="file" id="file-input" multiple style="display:none">
+    </div>
+
+    <div class="panel">
+      <h2>Options</h2>
+      <label class="opt">Target height <input type="number" id="opt-height" value="50" min="1" max="500" step="1"> mm (tallest axis after standing upright)</label>
+      <label class="opt">Merge colors closer than <input type="number" id="opt-merge" value="0" min="0" max="64" step="1"> (0–64 RGB distance, 0 = exact)</label>
+      <label class="opt"><input type="checkbox" id="opt-alpha" checked> Omit fully transparent faces (fx/ghost-flame parts)</label>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h2>Preview</h2>
+      <div id="preview-wrap">
+        <canvas id="preview"></canvas>
+        <div id="preview-label">— nothing converted yet —</div>
+      </div>
+      <div class="hint">Drag to rotate · wheel to zoom. Colors shown are the exact baked per-face colors going into the 3MF.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Converted models</h2>
+      <div id="cards"></div>
+      <button id="dl-all" class="ghost" style="display:none">Download all as .zip</button>
+    </div>
+
+    <div class="panel">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================ utils */
+const $ = (s) => document.querySelector(s);
+const logEl = $("#log");
+function log(msg, cls) {
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (cls === "err") console.error(msg); else console.log(msg);
+}
+
+/* ============================================================ CRC32 + ZIP writer */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function deflateRaw(bytes) {
+  if (typeof CompressionStream === "undefined") return null;
+  try {
+    const cs = new CompressionStream("deflate-raw");
+    const stream = new Blob([bytes]).stream().pipeThrough(cs);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch { return null; }
+}
+// entries: [{name: string, data: Uint8Array}] → Uint8Array of a valid ZIP
+async function makeZip(entries) {
+  const parts = [], central = [];
+  let offset = 0;
+  const te = new TextEncoder();
+  for (const e of entries) {
+    const nameB = te.encode(e.name);
+    const crc = crc32(e.data);
+    let method = 0, payload = e.data;
+    const deflated = await deflateRaw(e.data);
+    if (deflated && deflated.length < e.data.length) { method = 8; payload = deflated; }
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);          // version needed
+    lh.setUint16(6, 0x0800, true);      // UTF-8 names
+    lh.setUint16(8, method, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, payload.length, true);
+    lh.setUint32(22, e.data.length, true);
+    lh.setUint16(26, nameB.length, true);
+    parts.push(new Uint8Array(lh.buffer), nameB, payload);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, method, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, payload.length, true);
+    ch.setUint32(24, e.data.length, true);
+    ch.setUint16(28, nameB.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameB);
+    offset += 30 + nameB.length + payload.length;
+  }
+  const centralSize = central.reduce((s, b) => s + b.length, 0);
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, entries.length, true);
+  eocd.setUint16(10, entries.length, true);
+  eocd.setUint32(12, centralSize, true);
+  eocd.setUint32(16, offset, true);
+  const all = [...parts, ...central, new Uint8Array(eocd.buffer)];
+  const total = all.reduce((s, b) => s + b.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const b of all) { out.set(b, p); p += b.length; }
+  return out;
+}
+
+/* ============================================================ OBJ / MTL parsing */
+function parseMTL(text) {
+  const mats = {};
+  let cur = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("newmtl ")) {
+      cur = { kd: [0.8, 0.8, 0.8], mapKd: null };
+      mats[line.slice(7).trim()] = cur;
+    } else if (cur && line.startsWith("Kd ")) {
+      cur.kd = line.slice(3).trim().split(/\s+/).map(Number);
+    } else if (cur && line.startsWith("map_Kd ")) {
+      cur.mapKd = line.slice(7).trim();          // may contain spaces
+    }
+  }
+  return mats;
+}
+function parseOBJ(text) {
+  const pos = [], uv = [], tris = [];
+  let mtllib = null, curMtl = null;
+  const resolveIdx = (s, len) => { const i = parseInt(s, 10); return i < 0 ? len + i : i - 1; };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("v ")) {
+      const p = line.slice(2).trim().split(/\s+/).map(Number);
+      pos.push(p[0], p[1], p[2]);
+    } else if (line.startsWith("vt ")) {
+      const t = line.slice(3).trim().split(/\s+/).map(Number);
+      uv.push(t[0], t[1]);
+    } else if (line.startsWith("usemtl ")) {
+      curMtl = line.slice(7).trim();
+    } else if (line.startsWith("mtllib ")) {
+      mtllib = line.slice(7).trim();
+    } else if (line.startsWith("f ")) {
+      const vCount = pos.length / 3, tCount = uv.length / 2;
+      const verts = line.slice(2).trim().split(/\s+/).map(tok => {
+        const p = tok.split("/");
+        return {
+          v: resolveIdx(p[0], vCount),
+          t: (p.length > 1 && p[1] !== "") ? resolveIdx(p[1], tCount) : -1,
+        };
+      });
+      for (let i = 1; i + 1 < verts.length; i++) {          // fan-triangulate
+        tris.push({
+          v: [verts[0].v, verts[i].v, verts[i + 1].v],
+          t: [verts[0].t, verts[i].t, verts[i + 1].t],
+          m: curMtl,
+        });
+      }
+    }
+  }
+  return { pos, uv, tris, mtllib };
+}
+
+/* ============================================================ texture sampling */
+async function decodePNG(bytes) {
+  const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+  const cv = document.createElement("canvas");
+  cv.width = bmp.width; cv.height = bmp.height;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0);
+  const img = ctx.getImageData(0, 0, bmp.width, bmp.height);
+  bmp.close();
+  return { w: img.width, h: img.height, data: img.data };
+}
+// Nearest-neighbor, clamp-to-edge, OBJ v-flip. Never bilinear — the atlas gutters are white.
+function sampleNearest(tex, u, v) {
+  const x = Math.min(tex.w - 1, Math.max(0, Math.floor(u * tex.w)));
+  const y = Math.min(tex.h - 1, Math.max(0, Math.floor((1 - v) * tex.h)));
+  const i = (y * tex.w + x) * 4;
+  return [tex.data[i], tex.data[i + 1], tex.data[i + 2], tex.data[i + 3]];
+}
+
+/* ============================================================ color baking */
+// For each triangle sample 4 points: UV centroid + 3 corner points pulled 50% toward the
+// centroid (all safely inside the face's solid-color atlas patch, away from white gutters),
+// then take the majority color, centroid breaking ties.
+function bakeTriangleColor(tex, uvs) {
+  const cu = (uvs[0][0] + uvs[1][0] + uvs[2][0]) / 3;
+  const cv = (uvs[0][1] + uvs[1][1] + uvs[2][1]) / 3;
+  const pts = [[cu, cv]];
+  for (const [u, v] of uvs) pts.push([(u + cu) / 2, (v + cv) / 2]);
+  const counts = new Map();
+  let first = null;
+  for (const [u, v] of pts) {
+    const c = sampleNearest(tex, u, v);
+    const key = (c[0] << 24 | c[1] << 16 | c[2] << 8 | (c[3] < 128 ? 0 : 255)) >>> 0;
+    if (first === null) first = key;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let best = first, bestN = 0;
+  for (const [k, n] of counts) if (n > bestN || (n === bestN && k === first)) { best = k; bestN = n; }
+  return [(best >>> 24) & 255, (best >>> 16) & 255, (best >>> 8) & 255, best & 255];
+}
+function mergePalette(faceColors, tolerance) {
+  const hist = new Map();
+  for (const c of faceColors) {
+    const key = c[0] << 16 | c[1] << 8 | c[2];
+    hist.set(key, (hist.get(key) || 0) + 1);
+  }
+  const sorted = [...hist.entries()].sort((a, b) => b[1] - a[1]);
+  const reps = [], mapTo = new Map();
+  for (const [key] of sorted) {
+    const r = key >> 16 & 255, g = key >> 8 & 255, b = key & 255;
+    let found = -1;
+    if (tolerance > 0) {
+      for (let i = 0; i < reps.length; i++) {
+        const [rr, rg, rb] = reps[i];
+        if (Math.hypot(r - rr, g - rg, b - rb) <= tolerance) { found = i; break; }
+      }
+    }
+    if (found < 0) { reps.push([r, g, b]); found = reps.length - 1; }
+    mapTo.set(key, found);
+  }
+  return { palette: reps, indexOf: (c) => mapTo.get(c[0] << 16 | c[1] << 8 | c[2]) };
+}
+
+/* ============================================================ 3MF writer */
+const xmlEsc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const hex2 = (n) => n.toString(16).padStart(2, "0").toUpperCase();
+const fmtNum = (n) => { const s = n.toFixed(3); return s.includes(".") ? s.replace(/\.?0+$/, "") : s; };
+
+// verts: Float64Array-ish [x,y,z,...] already in final mm coords (Z-up).
+// tris: [{v:[a,b,c], p: paletteIndex}], palette: [[r,g,b],...]
+async function write3MF(title, verts, tris, palette) {
+  const bases = palette.map((c, i) =>
+    `<base name="Color ${i + 1} (#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])})" displaycolor="#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}"/>`).join("\n   ");
+  const vXml = [];
+  for (let i = 0; i < verts.length; i += 3)
+    vXml.push(`<vertex x="${fmtNum(verts[i])}" y="${fmtNum(verts[i + 1])}" z="${fmtNum(verts[i + 2])}"/>`);
+  const tXml = tris.map(t => `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${t.p}"/>`);
+  const model =
+`<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+ <metadata name="Title">${xmlEsc(title)}</metadata>
+ <metadata name="Application">Pokémon Quest 3MF Converter</metadata>
+ <resources>
+  <basematerials id="1">
+   ${bases}
+  </basematerials>
+  <object id="2" name="${xmlEsc(title)}" type="model" pid="1" pindex="0">
+   <mesh>
+    <vertices>
+${vXml.join("\n")}
+    </vertices>
+    <triangles>
+${tXml.join("\n")}
+    </triangles>
+   </mesh>
+  </object>
+ </resources>
+ <build>
+  <item objectid="2"/>
+ </build>
+</model>`;
+  const te = new TextEncoder();
+  return makeZip([
+    { name: "[Content_Types].xml", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>`) },
+    { name: "_rels/.rels", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`) },
+    { name: "3D/3dmodel.model", data: te.encode(model) },
+  ]);
+}
+
+/* ============================================================ conversion pipeline */
+// ctx = { label, objName, getText(name)→Promise<string|null>, getBytes(name)→Promise<Uint8Array|null> }
+// shiny: only meaningful for scheme-B (pq*) models — swaps the main body atlas texture.
+async function convertModel(ctx, { shiny = false } = {}) {
+  const opts = {
+    height: Math.max(1, parseFloat($("#opt-height").value) || 50),
+    merge: Math.max(0, parseInt($("#opt-merge").value, 10) || 0),
+    dropAlpha: $("#opt-alpha").checked,
+  };
+  const objText = await ctx.getText(ctx.objName);
+  if (objText === null) throw new Error(`could not read ${ctx.objName}`);
+  const obj = parseOBJ(objText);
+  log(`${ctx.label}: ${obj.pos.length / 3} verts, ${obj.tris.length} tris`, "dim");
+
+  // materials + textures
+  let mats = {};
+  if (obj.mtllib) {
+    const mtlText = await ctx.getText(obj.mtllib);
+    if (mtlText !== null) mats = parseMTL(mtlText);
+    else log(`${ctx.label}: mtl "${obj.mtllib}" not found — using flat gray`, "err");
+  }
+  const objBase = ctx.objName.replace(/\.obj$/i, "");
+  let shinyTexName = null;
+  if (shiny) {
+    for (const cand of [objBase + "S.png", objBase + "s.png"]) {
+      if (await ctx.getBytes(cand) !== null) { shinyTexName = cand; break; }
+    }
+    if (!shinyTexName) throw new Error(`no shiny texture found for ${ctx.objName} (tried ${objBase}S.png / s.png)`);
+    log(`${ctx.label}: shiny texture = ${shinyTexName}`, "ok");
+  }
+  const textures = {};       // material name → decoded texture (or null)
+  for (const [name, m] of Object.entries(mats)) {
+    if (!m.mapKd) { textures[name] = null; continue; }
+    // shiny swap applies only to the main body atlas (<objbase>.png); eyes/fx maps stay
+    const isMainAtlas = m.mapKd.toLowerCase() === (objBase.split("/").pop() + ".png").toLowerCase();
+    const wanted = (shinyTexName && isMainAtlas) ? shinyTexName : m.mapKd;
+    const bytes = await ctx.getBytes(wanted);
+    if (bytes === null) {
+      log(`${ctx.label}: texture "${wanted}" not found — material "${name}" falls back to Kd color`, "err");
+      textures[name] = null;
+    } else {
+      textures[name] = await decodePNG(bytes);
+    }
+  }
+
+  // bake per-face colors
+  const faceColors = [], keptTris = [];
+  let dropped = 0;
+  for (const t of obj.tris) {
+    const mat = mats[t.m] || null;
+    const tex = mat ? textures[t.m] : null;
+    let c;
+    if (tex && t.t[0] >= 0) {
+      const uvs = t.t.map(i => [obj.uv[i * 2], obj.uv[i * 2 + 1]]);
+      c = bakeTriangleColor(tex, uvs);
+      if (opts.dropAlpha && c[3] < 128) { dropped++; continue; }
+    } else {
+      const kd = mat ? mat.kd : [0.8, 0.8, 0.8];
+      c = [Math.round(kd[0] * 255), Math.round(kd[1] * 255), Math.round(kd[2] * 255), 255];
+    }
+    faceColors.push(c);
+    keptTris.push(t);
+  }
+  if (dropped) log(`${ctx.label}: dropped ${dropped} transparent faces`, "dim");
+  if (!keptTris.length) throw new Error("no printable faces after filtering");
+  const { palette, indexOf } = mergePalette(faceColors, opts.merge);
+
+  // compact vertices to only those used, transform Y-up → Z-up, scale, floor
+  const used = new Map();
+  const outVerts = [];
+  const remap = (i) => {
+    let r = used.get(i);
+    if (r === undefined) {
+      r = outVerts.length / 3;
+      used.set(i, r);
+      // OBJ (x, y-up, z) → 3MF (x, -z, y) so the model stands on the plate
+      outVerts.push(obj.pos[i * 3], -obj.pos[i * 3 + 2], obj.pos[i * 3 + 1]);
+    }
+    return r;
+  };
+  const outTris = keptTris.map((t, i) => ({ v: t.v.map(remap), p: indexOf(faceColors[i]) }));
+  let minX = 1/0, minY = 1/0, minZ = 1/0, maxX = -1/0, maxY = -1/0, maxZ = -1/0;
+  for (let i = 0; i < outVerts.length; i += 3) {
+    minX = Math.min(minX, outVerts[i]);     maxX = Math.max(maxX, outVerts[i]);
+    minY = Math.min(minY, outVerts[i + 1]); maxY = Math.max(maxY, outVerts[i + 1]);
+    minZ = Math.min(minZ, outVerts[i + 2]); maxZ = Math.max(maxZ, outVerts[i + 2]);
+  }
+  const scale = opts.height / Math.max(1e-9, maxZ - minZ);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  for (let i = 0; i < outVerts.length; i += 3) {
+    outVerts[i]     = (outVerts[i]     - cx)   * scale;
+    outVerts[i + 1] = (outVerts[i + 1] - cy)   * scale;
+    outVerts[i + 2] = (outVerts[i + 2] - minZ) * scale;
+  }
+  const dims = [(maxX - minX) * scale, (maxY - minY) * scale, (maxZ - minZ) * scale];
+
+  const title = ctx.label + (shiny ? " (Shiny)" : "");
+  const zip = await write3MF(title, outVerts, outTris, palette);
+  validate3MF(zip, outVerts.length / 3, outTris.length);   // throws on failure
+  return {
+    title, zip, palette, dims,
+    nVerts: outVerts.length / 3, nTris: outTris.length,
+    verts: outVerts, tris: outTris,
+  };
+}
+
+// Round-trip sanity check: unzip must yield the model part, XML must parse, counts must match.
+function validate3MF(zipBytes, nVerts, nTris) {
+  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+  if (dv.getUint32(0, true) !== 0x04034b50) throw new Error("3MF validation: not a zip");
+  // walk local headers to find 3D/3dmodel.model (only needed for stored entries; if it was
+  // deflated we trust makeZip since we hashed pre-compression — check XML separately below)
+  let p = 0, modelXml = null;
+  const td = new TextDecoder();
+  while (p + 30 <= zipBytes.length && dv.getUint32(p, true) === 0x04034b50) {
+    const method = dv.getUint16(p + 8, true);
+    const csize = dv.getUint32(p + 18, true);
+    const nlen = dv.getUint16(p + 26, true);
+    const name = td.decode(zipBytes.subarray(p + 30, p + 30 + nlen));
+    const data = zipBytes.subarray(p + 30 + nlen, p + 30 + nlen + csize);
+    if (name === "3D/3dmodel.model" && method === 0) modelXml = td.decode(data);
+    if (name === "3D/3dmodel.model" && method === 8) modelXml = "__deflated__";
+    p += 30 + nlen + csize;
+  }
+  if (modelXml === null) throw new Error("3MF validation: 3D/3dmodel.model missing");
+  if (modelXml !== "__deflated__") {
+    const doc = new DOMParser().parseFromString(modelXml, "application/xml");
+    if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
+    const v = doc.getElementsByTagName("vertex").length, t = doc.getElementsByTagName("triangle").length;
+    if (v !== nVerts || t !== nTris) throw new Error(`3MF validation: counts mismatch (${v}/${nVerts} verts, ${t}/${nTris} tris)`);
+  }
+  log(`3MF validated: ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
+}
+
+/* ============================================================ results UI */
+const results = [];
+window.__results = results;   // debug/test hook
+function addResultCard(res) {
+  results.push(res);
+  const card = document.createElement("div");
+  card.className = "card";
+  const sws = res.palette.slice(0, 24).map(c =>
+    `<span class="sw" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`).join("");
+  card.innerHTML =
+    `<span class="name">${xmlEsc(res.title)}</span>
+     <span class="stats">${res.nTris} tris · ${res.palette.length} colors · ${res.dims.map(d => d.toFixed(0)).join("×")} mm</span>
+     <span class="swatches">${sws}</span>`;
+  const btn = document.createElement("button");
+  btn.className = "small";
+  btn.textContent = "Download .3mf";
+  btn.onclick = () => downloadBytes(res.zip, safeName(res.title) + ".3mf");
+  const pv = document.createElement("button");
+  pv.className = "small ghost";
+  pv.textContent = "Preview";
+  pv.onclick = () => showPreview(res);
+  card.appendChild(pv);
+  card.appendChild(btn);
+  $("#cards").appendChild(card);
+  $("#dl-all").style.display = results.length > 1 ? "" : "none";
+  showPreview(res);
+}
+function safeName(s) { return s.replace(/[\\/:*?"<>|]/g, "_"); }
+function downloadBytes(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+$("#dl-all").onclick = async () => {
+  const zip = await makeZip(results.map(r => ({ name: safeName(r.title) + ".3mf", data: r.zip })));
+  downloadBytes(zip, "quest-3mf-models.zip");
+};
+
+/* ============================================================ 3D preview (three.js, optional) */
+let THREE_NS = null, pvScene = null, pvRenderer = null, pvCamera = null, pvMesh = null;
+let pvTheta = 0.7, pvPhi = 1.15, pvDist = 120, pvTarget = [0, 0, 25];
+async function ensureThree() {
+  if (THREE_NS) return THREE_NS;
+  THREE_NS = await import("https://unpkg.com/three@0.160.0/build/three.module.js");
+  const cv = $("#preview");
+  pvRenderer = new THREE_NS.WebGLRenderer({ canvas: cv, antialias: true });
+  pvRenderer.setSize(cv.clientWidth, cv.clientHeight, false);
+  pvCamera = new THREE_NS.PerspectiveCamera(40, cv.clientWidth / cv.clientHeight, 0.1, 5000);
+  pvScene = new THREE_NS.Scene();
+  pvScene.background = new THREE_NS.Color(0x0d1226);
+  pvScene.add(new THREE_NS.HemisphereLight(0xffffff, 0x445577, 1.1));
+  const dl = new THREE_NS.DirectionalLight(0xffffff, 1.2);
+  dl.position.set(1, -2, 3);
+  pvScene.add(dl);
+  const grid = new THREE_NS.GridHelper(120, 12, 0x3a4670, 0x232b4a);
+  grid.rotation.x = Math.PI / 2;   // our world is Z-up
+  pvScene.add(grid);
+  // minimal orbit: drag rotate, wheel zoom
+  let drag = null;
+  cv.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    pvTheta -= (e.clientX - drag[0]) * 0.008;
+    pvPhi = Math.min(3.0, Math.max(0.15, pvPhi - (e.clientY - drag[1]) * 0.008));
+    drag = [e.clientX, e.clientY];
+  });
+  cv.addEventListener("pointerup", () => drag = null);
+  cv.addEventListener("wheel", e => { e.preventDefault(); pvDist *= Math.exp(e.deltaY * 0.001); }, { passive: false });
+  (function tick() {
+    requestAnimationFrame(tick);
+    if (!drag) pvTheta += 0.003;
+    pvCamera.position.set(
+      pvTarget[0] + pvDist * Math.sin(pvPhi) * Math.cos(pvTheta),
+      pvTarget[1] + pvDist * Math.sin(pvPhi) * Math.sin(pvTheta),
+      pvTarget[2] + pvDist * Math.cos(pvPhi));
+    pvCamera.up.set(0, 0, 1);
+    pvCamera.lookAt(pvTarget[0], pvTarget[1], pvTarget[2]);
+    pvRenderer.render(pvScene, pvCamera);
+  })();
+  return THREE_NS;
+}
+async function showPreview(res) {
+  try {
+    const T = await ensureThree();
+    if (pvMesh) { pvScene.remove(pvMesh); pvMesh.geometry.dispose(); pvMesh.material.dispose(); }
+    const n = res.tris.length;
+    const posArr = new Float32Array(n * 9), colArr = new Float32Array(n * 9);
+    for (let i = 0; i < n; i++) {
+      const t = res.tris[i], c = res.palette[t.p];
+      for (let k = 0; k < 3; k++) {
+        const vi = t.v[k];
+        posArr.set([res.verts[vi * 3], res.verts[vi * 3 + 1], res.verts[vi * 3 + 2]], i * 9 + k * 3);
+        colArr.set([c[0] / 255, c[1] / 255, c[2] / 255], i * 9 + k * 3);
+      }
+    }
+    const g = new T.BufferGeometry();
+    g.setAttribute("position", new T.BufferAttribute(posArr, 3));
+    g.setAttribute("color", new T.BufferAttribute(colArr, 3));
+    g.computeVertexNormals();
+    pvMesh = new T.Mesh(g, new T.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    pvScene.add(pvMesh);
+    const h = res.dims[2];
+    pvTarget = [0, 0, h / 2];
+    pvDist = Math.max(...res.dims) * 2.4;
+    $("#preview-label").textContent = res.title;
+  } catch (e) {
+    $("#preview-label").textContent = "(3D preview unavailable — conversion unaffected: " + e.message + ")";
+  }
+}
+
+/* ============================================================ GitHub source */
+const GH_RAW = "https://raw.githubusercontent.com/PocketArcade64/Pokemon-Rumble-Run/main/";
+const QUEST_ROOT = "Pokemon Quest 3D Models/";
+const encPath = (p) => p.split("/").map(encodeURIComponent).join("/");
+const ghCache = new Map();
+async function ghFetch(path, asBytes) {
+  const key = (asBytes ? "b:" : "t:") + path;
+  if (ghCache.has(key)) return ghCache.get(key);
+  const r = await fetch(GH_RAW + encPath(path));
+  const val = !r.ok ? null : (asBytes ? new Uint8Array(await r.arrayBuffer()) : await r.text());
+  ghCache.set(key, val);
+  return val;
+}
+function ghCtx(label, objPath) {
+  const dir = objPath.slice(0, objPath.lastIndexOf("/") + 1);
+  const objName = objPath.slice(objPath.lastIndexOf("/") + 1);
+  return {
+    label, objName,
+    getText: (name) => ghFetch(QUEST_ROOT + dir + name, false),
+    getBytes: (name) => ghFetch(QUEST_ROOT + dir + name, true),
+  };
+}
+let DEX = [], dexSel = null;
+async function loadDex() {
+  try {
+    const src = await ghFetch("questdex.js", false);
+    if (src === null) throw new Error("fetch failed");
+    const arr = src.slice(src.indexOf("["), src.lastIndexOf("]") + 1);
+    DEX = new Function("return " + arr)();
+    $("#gh-status").textContent = `${DEX.length} models loaded from GitHub.`;
+    $("#dex-search").disabled = false;
+    renderDexList("");
+  } catch (e) {
+    $("#gh-status").textContent = "GitHub unavailable (" + e.message + ") — use local file drop instead.";
+  }
+}
+function renderDexList(q) {
+  const list = $("#dex-list");
+  list.innerHTML = "";
+  const ql = q.toLowerCase();
+  const hits = DEX.filter(e => e.n.toLowerCase().includes(ql) || String(e.d).padStart(4, "0").includes(ql)).slice(0, 40);
+  for (const e of hits) {
+    const d = document.createElement("div");
+    d.className = "dex-item" + (dexSel === e ? " sel" : "");
+    d.textContent = `#${String(e.d).padStart(4, "0")} ${e.n}`;
+    d.onclick = () => { dexSel = e; renderDexList($("#dex-search").value); $("#gh-convert").disabled = false; };
+    list.appendChild(d);
+  }
+}
+$("#dex-search").addEventListener("input", (e) => renderDexList(e.target.value));
+$("#gh-convert").onclick = async () => {
+  if (!dexSel) return;
+  const btn = $("#gh-convert");
+  btn.disabled = true;
+  try {
+    const shinyWanted = $("#gh-shiny").checked;
+    let objPath = dexSel.o, shinySwap = false, label = dexSel.n;
+    const isSchemeB = /^pq\d{4}/.test(objPath.split("/").pop());
+    if (shinyWanted) {
+      if (isSchemeB) {
+        shinySwap = true;    // texture swap on same mesh
+      } else if (dexSel.s) { // separate shiny model: derive obj from shiny texture name
+        objPath = objPath.slice(0, objPath.lastIndexOf("/") + 1) + dexSel.s.replace(/\.png$/i, ".obj");
+        label += " (Shiny model)";
+      } else {
+        throw new Error(`${dexSel.n}: no shiny variant listed`);
+      }
+    }
+    log(`Converting ${label}${shinySwap ? " (shiny swap)" : ""} from GitHub…`);
+    const res = await convertModel(ghCtx(dexSel.n, objPath), { shiny: shinySwap });
+    addResultCard(res);
+    log(`${res.title}: done — ${res.nTris} tris, ${res.palette.length} colors, ${res.dims.map(d => d.toFixed(1)).join(" × ")} mm`, "ok");
+  } catch (e) {
+    log("Failed: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+/* ============================================================ local drop source */
+const dz = $("#dropzone");
+dz.onclick = () => $("#file-input").click();
+$("#file-input").onchange = (e) => handleLocalFiles([...e.target.files].map(f => [f.name, f]));
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("hover"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("hover"));
+dz.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  dz.classList.remove("hover");
+  const pairs = [];
+  const walk = async (entry, prefix) => {
+    if (entry.isFile) {
+      const f = await new Promise((res, rej) => entry.file(res, rej));
+      pairs.push([prefix + entry.name, f]);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const sub of batch) await walk(sub, prefix + entry.name + "/");
+      } while (batch.length);
+    }
+  };
+  const items = [...e.dataTransfer.items];
+  for (const it of items) {
+    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
+    if (entry) await walk(entry, "");
+    else { const f = it.getAsFile(); if (f) pairs.push([f.name, f]); }
+  }
+  handleLocalFiles(pairs);
+});
+async function handleLocalFiles(pairs) {
+  if (!pairs.length) return;
+  // exact-case lookup first; case-insensitive fallback (OneDrive names are the stored truth)
+  const byPath = new Map(pairs);
+  const byLower = new Map(pairs.map(([p, f]) => [p.toLowerCase(), f]));
+  const getFile = (dir, name) => byPath.get(dir + name) || byLower.get((dir + name).toLowerCase()) || null;
+  const objs = pairs.filter(([p]) => p.toLowerCase().endsWith(".obj"));
+  if (!objs.length) { log("No .obj files in the dropped set.", "err"); return; }
+  log(`Found ${objs.length} model(s) in dropped files.`);
+  for (const [path] of objs) {
+    const dir = path.slice(0, path.lastIndexOf("/") + 1);
+    const objName = path.slice(path.lastIndexOf("/") + 1);
+    const label = objName.replace(/\.obj$/i, "");
+    const ctx = {
+      label, objName,
+      getText: async (n) => { const f = getFile(dir, n); return f ? f.text() : null; },
+      getBytes: async (n) => { const f = getFile(dir, n); return f ? new Uint8Array(await f.arrayBuffer()) : null; },
+    };
+    try {
+      addResultCard(await convertModel(ctx));
+    } catch (e) {
+      log(`${label} failed: ${e.message}`, "err");
+      continue;
+    }
+    // scheme-B models with a shiny atlas present → also convert the shiny variant
+    if (/^pq\d{4}/.test(objName)) {
+      const base = objName.replace(/\.obj$/i, "");
+      if (getFile(dir, base + "S.png") || getFile(dir, base + "s.png")) {
+        try { addResultCard(await convertModel(ctx, { shiny: true })); }
+        catch (e) { log(`${label} (shiny) failed: ${e.message}`, "err"); }
+      }
+    }
+  }
+}
+
+loadDex();
+</script>
+</body>
+</html>
