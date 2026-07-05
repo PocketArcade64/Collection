@@ -65,7 +65,7 @@
 </head>
 <body>
 <h1>Pokémon Quest → 3MF Converter</h1>
-<div class="sub">Bakes each voxel face's texture color to a flat per-triangle material (3MF core spec) — ready for multi-color slicing in Bambu Studio / OrcaSlicer / PrusaSlicer.</div>
+<div class="sub">Bakes each voxel face's texture color and splits the mesh into one part per color, with per-part filament assignments — imports as a single multi-part object in Bambu Studio / OrcaSlicer.</div>
 
 <div class="cols">
   <div class="col">
@@ -90,6 +90,7 @@
       <h2>Options</h2>
       <label class="opt">Target height <input type="number" id="opt-height" value="50" min="1" max="500" step="1"> mm (tallest axis after standing upright)</label>
       <label class="opt">Merge colors closer than <input type="number" id="opt-merge" value="0" min="0" max="64" step="1"> (0–64 RGB distance, 0 = exact)</label>
+      <label class="opt">Max colors <input type="number" id="opt-maxcol" value="16" min="0" max="64" step="1"> (= filament slots; extras merge into the nearest kept color; 0 = unlimited)</label>
       <label class="opt"><input type="checkbox" id="opt-alpha" checked> Omit fully transparent faces (fx/ghost-flame parts)</label>
     </div>
   </div>
@@ -297,7 +298,7 @@ function bakeTriangleColor(tex, uvs) {
   for (const [k, n] of counts) if (n > bestN || (n === bestN && k === first)) { best = k; bestN = n; }
   return [(best >>> 24) & 255, (best >>> 16) & 255, (best >>> 8) & 255, best & 255];
 }
-function mergePalette(faceColors, tolerance) {
+function mergePalette(faceColors, tolerance, maxColors) {
   const hist = new Map();
   for (const c of faceColors) {
     const key = c[0] << 16 | c[1] << 8 | c[2];
@@ -317,7 +318,24 @@ function mergePalette(faceColors, tolerance) {
     if (found < 0) { reps.push([r, g, b]); found = reps.length - 1; }
     mapTo.set(key, found);
   }
-  return { palette: reps, indexOf: (c) => mapTo.get(c[0] << 16 | c[1] << 8 | c[2]) };
+  // cap the palette at maxColors: reps are in descending-frequency creation order, so keep
+  // the first N and fold the tail into whichever kept color is nearest
+  let palette = reps;
+  if (maxColors > 0 && reps.length > maxColors) {
+    palette = reps.slice(0, maxColors);
+    const fold = new Map();
+    for (let i = maxColors; i < reps.length; i++) {
+      const [r, g, b] = reps[i];
+      let best = 0, bestD = 1/0;
+      for (let k = 0; k < palette.length; k++) {
+        const d = Math.hypot(r - palette[k][0], g - palette[k][1], b - palette[k][2]);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      fold.set(i, best);
+    }
+    for (const [key, idx] of mapTo) if (idx >= maxColors) mapTo.set(key, fold.get(idx));
+  }
+  return { palette, indexOf: (c) => mapTo.get(c[0] << 16 | c[1] << 8 | c[2]) };
 }
 
 /* ============================================================ 3MF writer */
@@ -327,13 +345,58 @@ const fmtNum = (n) => { const s = n.toFixed(3); return s.includes(".") ? s.repla
 
 // verts: Float64Array-ish [x,y,z,...] already in final mm coords (Z-up).
 // tris: [{v:[a,b,c], p: paletteIndex}], palette: [[r,g,b],...]
+// Bambu Studio / OrcaSlicer ignore core-spec per-triangle basematerial painting, so instead we
+// emit one mesh object per color as components of a parent object, plus Bambu's
+// Metadata/model_settings.config assigning extruder p+1 to each part (part id = component
+// object id; unknown metadata keys like "extruder" deserialize into the volume config).
 async function write3MF(title, verts, tris, palette) {
+  const colHex = (c) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`;
   const bases = palette.map((c, i) =>
-    `<base name="Color ${i + 1} (#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])})" displaycolor="#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}"/>`).join("\n   ");
-  const vXml = [];
-  for (let i = 0; i < verts.length; i += 3)
-    vXml.push(`<vertex x="${fmtNum(verts[i])}" y="${fmtNum(verts[i + 1])}" z="${fmtNum(verts[i + 2])}"/>`);
-  const tXml = tris.map(t => `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${t.p}"/>`);
+    `<base name="Color ${i + 1} (${colHex(c)})" displaycolor="${colHex(c)}"/>`).join("\n   ");
+  const groups = palette.map(() => []);
+  for (const t of tris) groups[t.p].push(t);
+  const objXml = [], compXml = [], partsCfg = [];
+  let nextId = 3;
+  for (let p = 0; p < palette.length; p++) {
+    if (!groups[p].length) continue;
+    const id = nextId++;
+    // compact vertices per color group (component meshes index their own vertex lists)
+    const map = new Map(), vloc = [];
+    const remap = (vi) => {
+      let r = map.get(vi);
+      if (r === undefined) {
+        r = vloc.length / 3;
+        map.set(vi, r);
+        vloc.push(verts[vi * 3], verts[vi * 3 + 1], verts[vi * 3 + 2]);
+      }
+      return r;
+    };
+    const tXml = groups[p].map(t => {
+      const a = remap(t.v[0]), b = remap(t.v[1]), c = remap(t.v[2]);
+      return `<triangle v1="${a}" v2="${b}" v3="${c}"/>`;
+    });
+    const vXml = [];
+    for (let i = 0; i < vloc.length; i += 3)
+      vXml.push(`<vertex x="${fmtNum(vloc[i])}" y="${fmtNum(vloc[i + 1])}" z="${fmtNum(vloc[i + 2])}"/>`);
+    const partName = `Color ${p + 1} (${colHex(palette[p])})`;
+    objXml.push(
+`  <object id="${id}" name="${xmlEsc(partName)}" type="model" pid="1" pindex="${p}">
+   <mesh>
+    <vertices>
+${vXml.join("\n")}
+    </vertices>
+    <triangles>
+${tXml.join("\n")}
+    </triangles>
+   </mesh>
+  </object>`);
+    compXml.push(`   <component objectid="${id}"/>`);
+    partsCfg.push(
+`  <part id="${id}" subtype="normal_part">
+   <metadata key="name" value="${xmlEsc(partName)}"/>
+   <metadata key="extruder" value="${p + 1}"/>
+  </part>`);
+  }
   const model =
 `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
@@ -343,21 +406,25 @@ async function write3MF(title, verts, tris, palette) {
   <basematerials id="1">
    ${bases}
   </basematerials>
-  <object id="2" name="${xmlEsc(title)}" type="model" pid="1" pindex="0">
-   <mesh>
-    <vertices>
-${vXml.join("\n")}
-    </vertices>
-    <triangles>
-${tXml.join("\n")}
-    </triangles>
-   </mesh>
+${objXml.join("\n")}
+  <object id="2" name="${xmlEsc(title)}" type="model">
+   <components>
+${compXml.join("\n")}
+   </components>
   </object>
  </resources>
  <build>
   <item objectid="2"/>
  </build>
 </model>`;
+  const settings =
+`<?xml version="1.0" encoding="UTF-8"?>
+<config>
+ <object id="2">
+  <metadata key="name" value="${xmlEsc(title)}"/>
+${partsCfg.join("\n")}
+ </object>
+</config>`;
   const te = new TextEncoder();
   return makeZip([
     { name: "[Content_Types].xml", data: te.encode(
@@ -365,6 +432,7 @@ ${tXml.join("\n")}
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
  <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+ <Default Extension="config" ContentType="text/xml"/>
 </Types>`) },
     { name: "_rels/.rels", data: te.encode(
 `<?xml version="1.0" encoding="UTF-8"?>
@@ -372,6 +440,7 @@ ${tXml.join("\n")}
  <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
 </Relationships>`) },
     { name: "3D/3dmodel.model", data: te.encode(model) },
+    { name: "Metadata/model_settings.config", data: te.encode(settings) },
   ]);
 }
 
@@ -382,6 +451,7 @@ async function convertModel(ctx, { shiny = false } = {}) {
   const opts = {
     height: Math.max(1, parseFloat($("#opt-height").value) || 50),
     merge: Math.max(0, parseInt($("#opt-merge").value, 10) || 0),
+    maxColors: Math.max(0, parseInt($("#opt-maxcol").value, 10) || 0),
     dropAlpha: $("#opt-alpha").checked,
   };
   const objText = await ctx.getText(ctx.objName);
@@ -440,7 +510,7 @@ async function convertModel(ctx, { shiny = false } = {}) {
   }
   if (dropped) log(`${ctx.label}: dropped ${dropped} transparent faces`, "dim");
   if (!keptTris.length) throw new Error("no printable faces after filtering");
-  const { palette, indexOf } = mergePalette(faceColors, opts.merge);
+  const { palette, indexOf } = mergePalette(faceColors, opts.merge, opts.maxColors);
 
   // compact vertices to only those used, transform Y-up → Z-up, scale, floor
   const used = new Map();
@@ -473,7 +543,7 @@ async function convertModel(ctx, { shiny = false } = {}) {
 
   const title = ctx.label + (shiny ? " (Shiny)" : "");
   const zip = await write3MF(title, outVerts, outTris, palette);
-  validate3MF(zip, outVerts.length / 3, outTris.length);   // throws on failure
+  await validate3MF(zip, outTris.length, palette.length);   // throws on failure
   return {
     title, zip, palette, dims,
     nVerts: outVerts.length / 3, nTris: outTris.length,
@@ -481,32 +551,46 @@ async function convertModel(ctx, { shiny = false } = {}) {
   };
 }
 
-// Round-trip sanity check: unzip must yield the model part, XML must parse, counts must match.
-function validate3MF(zipBytes, nVerts, nTris) {
+// Round-trip sanity check: unzip (inflating if needed), XML must parse, per-part structure
+// and the Bambu model_settings.config must line up with what we meant to write.
+async function validate3MF(zipBytes, nTris, nParts) {
   const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
   if (dv.getUint32(0, true) !== 0x04034b50) throw new Error("3MF validation: not a zip");
-  // walk local headers to find 3D/3dmodel.model (only needed for stored entries; if it was
-  // deflated we trust makeZip since we hashed pre-compression — check XML separately below)
-  let p = 0, modelXml = null;
+  let p = 0;
   const td = new TextDecoder();
+  const files = {};
   while (p + 30 <= zipBytes.length && dv.getUint32(p, true) === 0x04034b50) {
     const method = dv.getUint16(p + 8, true);
     const csize = dv.getUint32(p + 18, true);
     const nlen = dv.getUint16(p + 26, true);
     const name = td.decode(zipBytes.subarray(p + 30, p + 30 + nlen));
-    const data = zipBytes.subarray(p + 30 + nlen, p + 30 + nlen + csize);
-    if (name === "3D/3dmodel.model" && method === 0) modelXml = td.decode(data);
-    if (name === "3D/3dmodel.model" && method === 8) modelXml = "__deflated__";
+    let data = zipBytes.subarray(p + 30 + nlen, p + 30 + nlen + csize);
+    if (method === 8) {
+      const ds = new DecompressionStream("deflate-raw");
+      data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer());
+    }
+    files[name] = td.decode(data);
     p += 30 + nlen + csize;
   }
-  if (modelXml === null) throw new Error("3MF validation: 3D/3dmodel.model missing");
-  if (modelXml !== "__deflated__") {
-    const doc = new DOMParser().parseFromString(modelXml, "application/xml");
-    if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
-    const v = doc.getElementsByTagName("vertex").length, t = doc.getElementsByTagName("triangle").length;
-    if (v !== nVerts || t !== nTris) throw new Error(`3MF validation: counts mismatch (${v}/${nVerts} verts, ${t}/${nTris} tris)`);
-  }
-  log(`3MF validated: ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
+  const modelXml = files["3D/3dmodel.model"];
+  if (!modelXml) throw new Error("3MF validation: 3D/3dmodel.model missing");
+  const doc = new DOMParser().parseFromString(modelXml, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
+  const meshObjs = [...doc.getElementsByTagName("object")].filter(o => o.getElementsByTagName("mesh").length);
+  const t = doc.getElementsByTagName("triangle").length;
+  const comps = doc.getElementsByTagName("component").length;
+  if (t !== nTris) throw new Error(`3MF validation: triangle count mismatch (${t}/${nTris})`);
+  if (meshObjs.length !== nParts || comps !== nParts)
+    throw new Error(`3MF validation: part count mismatch (${meshObjs.length} meshes, ${comps} components, expected ${nParts})`);
+  const cfg = files["Metadata/model_settings.config"];
+  if (!cfg) throw new Error("3MF validation: model_settings.config missing");
+  const cfgDoc = new DOMParser().parseFromString(cfg, "application/xml");
+  if (cfgDoc.querySelector("parsererror")) throw new Error("3MF validation: config XML malformed");
+  const cfgIds = [...cfgDoc.getElementsByTagName("part")].map(el => el.getAttribute("id")).sort();
+  const meshIds = meshObjs.map(o => o.getAttribute("id")).sort();
+  if (cfgIds.join() !== meshIds.join())
+    throw new Error(`3MF validation: config part ids [${cfgIds}] != mesh object ids [${meshIds}]`);
+  log(`3MF validated: ${nParts} parts, ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
 }
 
 /* ============================================================ results UI */
