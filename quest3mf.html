@@ -65,7 +65,7 @@
 </head>
 <body>
 <h1>Pokémon Quest → 3MF Converter</h1>
-<div class="sub">Bakes each voxel face's texture color and splits the mesh into one part per color, with per-part filament assignments — imports as a single multi-part object in Bambu Studio / OrcaSlicer.</div>
+<div class="sub">Bakes each voxel face's texture color into Bambu Studio's per-triangle filament painting (paint_color) on a single watertight mesh — imports and slices like a hand-painted model in Bambu Studio / OrcaSlicer.</div>
 
 <div class="cols">
   <div class="col">
@@ -90,7 +90,7 @@
       <h2>Options</h2>
       <label class="opt">Target height <input type="number" id="opt-height" value="50" min="1" max="500" step="1"> mm (tallest axis after standing upright)</label>
       <label class="opt">Merge colors closer than <input type="number" id="opt-merge" value="0" min="0" max="64" step="1"> (0–64 RGB distance, 0 = exact)</label>
-      <label class="opt">Max colors <input type="number" id="opt-maxcol" value="16" min="0" max="64" step="1"> (= filament slots; extras merge into the nearest kept color; 0 = unlimited)</label>
+      <label class="opt">Max colors <input type="number" id="opt-maxcol" value="16" min="1" max="16" step="1"> (= filament slots, Bambu painting supports up to 16; extras merge into the nearest kept color)</label>
       <label class="opt"><input type="checkbox" id="opt-alpha" checked> Omit fully transparent faces (fx/ghost-flame parts)</label>
     </div>
   </div>
@@ -338,6 +338,66 @@ function mergePalette(faceColors, tolerance, maxColors) {
   return { palette, indexOf: (c) => mapTo.get(c[0] << 16 | c[1] << 8 | c[2]) };
 }
 
+/* ============================================================ mesh repair */
+// Quest models are assemblies of voxel boxes; limbs/features are open boxes missing the
+// hidden face where they plug into the body. Slicers hit those open shells as broken
+// contours → "empty layer" errors. Weld duplicate vertices (UV-seam copies), then cap
+// every open boundary loop with a fan (caps sit hidden inside the body).
+function weldAndCap(verts, tris) {
+  // weld exact-duplicate positions so topology connects across UV seams
+  const posId = new Map(), canon = new Array(verts.length / 3);
+  const outVerts = [];
+  for (let i = 0; i < verts.length / 3; i++) {
+    const key = verts[i * 3] + "," + verts[i * 3 + 1] + "," + verts[i * 3 + 2];
+    let id = posId.get(key);
+    if (id === undefined) {
+      id = outVerts.length / 3;
+      posId.set(key, id);
+      outVerts.push(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+    }
+    canon[i] = id;
+  }
+  const outTris = [];
+  for (const t of tris) {
+    const v = [canon[t.v[0]], canon[t.v[1]], canon[t.v[2]]];
+    if (v[0] === v[1] || v[1] === v[2] || v[2] === v[0]) continue;   // collapsed by welding
+    outTris.push({ v, p: t.p });
+  }
+  // directed edge map: an edge a→b with no partner b→a lies on an open boundary
+  const dir = new Map();
+  for (let i = 0; i < outTris.length; i++) {
+    const v = outTris[i].v;
+    for (let k = 0; k < 3; k++) dir.set(v[k] + "," + v[(k + 1) % 3], i);
+  }
+  const nextOf = new Map();   // boundary edges chained tail → {head, ownerTri}
+  for (const [key, tri] of dir) {
+    const [a, b] = key.split(",").map(Number);
+    if (!dir.has(b + "," + a)) nextOf.set(a, { to: b, tri });
+  }
+  let holes = 0, capTris = 0;
+  while (nextOf.size) {
+    const [start, first] = nextOf.entries().next().value;
+    const loop = [start];
+    let cur = first, guard = 0;
+    nextOf.delete(start);
+    while (cur.to !== start && guard++ < 100000) {
+      loop.push(cur.to);
+      const nxt = nextOf.get(cur.to);
+      nextOf.delete(cur.to);
+      if (!nxt) break;   // broken chain (non-manifold weirdness) — cap what we have
+      cur = nxt;
+    }
+    if (loop.length < 3) continue;
+    // fan-triangulate reversed so cap winding opposes the boundary edges (outward normals)
+    for (let i = 1; i + 1 < loop.length; i++) {
+      outTris.push({ v: [loop[0], loop[i + 1], loop[i]], p: outTris[first.tri].p });
+      capTris++;
+    }
+    holes++;
+  }
+  return { verts: outVerts, tris: outTris, holes, capTris };
+}
+
 /* ============================================================ 3MF writer */
 const xmlEsc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const hex2 = (n) => n.toString(16).padStart(2, "0").toUpperCase();
@@ -345,58 +405,34 @@ const fmtNum = (n) => { const s = n.toFixed(3); return s.includes(".") ? s.repla
 
 // verts: Float64Array-ish [x,y,z,...] already in final mm coords (Z-up).
 // tris: [{v:[a,b,c], p: paletteIndex}], palette: [[r,g,b],...]
-// Bambu Studio / OrcaSlicer ignore core-spec per-triangle basematerial painting, so instead we
-// emit one mesh object per color as components of a parent object, plus Bambu's
-// Metadata/model_settings.config assigning extruder p+1 to each part (part id = component
-// object id; unknown metadata keys like "extruder" deserialize into the volume config).
+// The mesh must stay ONE watertight object — splitting it per color produces open shells that
+// slice with empty layers. Multi-color goes in as Bambu Studio's per-triangle paint_color
+// attribute (the same data its manual painting tool saves), which slicers segment internally.
+// Core-spec basematerials + p1 are also written for spec-compliant viewers.
+
+// paint_color encoding (TriangleSelector::serialize + FacetsAnnotation::get_triangle_as_string):
+// leaf triangle, filament N ⇒ state n=N: nibble n<<2 if n<3, else 0xC then nibble (n-3);
+// nibble stream is hex-encoded in reverse order. Filament 1→"4", 2→"8", 3→"0C", 4→"1C" …
+function paintColorFor(filament) {
+  const n = filament;
+  if (n < 3) return (n << 2).toString(16).toUpperCase();
+  let m = n - 3;
+  const nibbles = [0xC];
+  while (m >= 15) { nibbles.push(0xF); m -= 15; }
+  nibbles.push(m);
+  return nibbles.reverse().map(x => x.toString(16).toUpperCase()).join("");
+}
+
 async function write3MF(title, verts, tris, palette) {
   const colHex = (c) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`;
   const bases = palette.map((c, i) =>
     `<base name="Color ${i + 1} (${colHex(c)})" displaycolor="${colHex(c)}"/>`).join("\n   ");
-  const groups = palette.map(() => []);
-  for (const t of tris) groups[t.p].push(t);
-  const objXml = [], compXml = [], partsCfg = [];
-  let nextId = 3;
-  for (let p = 0; p < palette.length; p++) {
-    if (!groups[p].length) continue;
-    const id = nextId++;
-    // compact vertices per color group (component meshes index their own vertex lists)
-    const map = new Map(), vloc = [];
-    const remap = (vi) => {
-      let r = map.get(vi);
-      if (r === undefined) {
-        r = vloc.length / 3;
-        map.set(vi, r);
-        vloc.push(verts[vi * 3], verts[vi * 3 + 1], verts[vi * 3 + 2]);
-      }
-      return r;
-    };
-    const tXml = groups[p].map(t => {
-      const a = remap(t.v[0]), b = remap(t.v[1]), c = remap(t.v[2]);
-      return `<triangle v1="${a}" v2="${b}" v3="${c}"/>`;
-    });
-    const vXml = [];
-    for (let i = 0; i < vloc.length; i += 3)
-      vXml.push(`<vertex x="${fmtNum(vloc[i])}" y="${fmtNum(vloc[i + 1])}" z="${fmtNum(vloc[i + 2])}"/>`);
-    const partName = `Color ${p + 1} (${colHex(palette[p])})`;
-    objXml.push(
-`  <object id="${id}" name="${xmlEsc(partName)}" type="model" pid="1" pindex="${p}">
-   <mesh>
-    <vertices>
-${vXml.join("\n")}
-    </vertices>
-    <triangles>
-${tXml.join("\n")}
-    </triangles>
-   </mesh>
-  </object>`);
-    compXml.push(`   <component objectid="${id}"/>`);
-    partsCfg.push(
-`  <part id="${id}" subtype="normal_part">
-   <metadata key="name" value="${xmlEsc(partName)}"/>
-   <metadata key="extruder" value="${p + 1}"/>
-  </part>`);
-  }
+  const paint = palette.map((_, p) => paintColorFor(p + 1));
+  const vXml = [];
+  for (let i = 0; i < verts.length; i += 3)
+    vXml.push(`<vertex x="${fmtNum(verts[i])}" y="${fmtNum(verts[i + 1])}" z="${fmtNum(verts[i + 2])}"/>`);
+  const tXml = tris.map(t =>
+    `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${t.p}" paint_color="${paint[t.p]}"/>`);
   const model =
 `<?xml version="1.0" encoding="UTF-8"?>
 <model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
@@ -406,11 +442,15 @@ ${tXml.join("\n")}
   <basematerials id="1">
    ${bases}
   </basematerials>
-${objXml.join("\n")}
-  <object id="2" name="${xmlEsc(title)}" type="model">
-   <components>
-${compXml.join("\n")}
-   </components>
+  <object id="2" name="${xmlEsc(title)}" type="model" pid="1" pindex="0">
+   <mesh>
+    <vertices>
+${vXml.join("\n")}
+    </vertices>
+    <triangles>
+${tXml.join("\n")}
+    </triangles>
+   </mesh>
   </object>
  </resources>
  <build>
@@ -422,7 +462,7 @@ ${compXml.join("\n")}
 <config>
  <object id="2">
   <metadata key="name" value="${xmlEsc(title)}"/>
-${partsCfg.join("\n")}
+  <metadata key="extruder" value="1"/>
  </object>
 </config>`;
   const te = new TextEncoder();
@@ -541,19 +581,23 @@ async function convertModel(ctx, { shiny = false } = {}) {
   }
   const dims = [(maxX - minX) * scale, (maxY - minY) * scale, (maxZ - minZ) * scale];
 
+  const fixed = weldAndCap(outVerts, outTris);
+  if (fixed.holes)
+    log(`${ctx.label}: welded seams, capped ${fixed.holes} hidden openings (+${fixed.capTris} tris)`, "dim");
+
   const title = ctx.label + (shiny ? " (Shiny)" : "");
-  const zip = await write3MF(title, outVerts, outTris, palette);
-  await validate3MF(zip, outTris.length, palette.length);   // throws on failure
+  const zip = await write3MF(title, fixed.verts, fixed.tris, palette);
+  await validate3MF(zip, fixed.tris.length, palette.length);   // throws on failure
   return {
     title, zip, palette, dims,
-    nVerts: outVerts.length / 3, nTris: outTris.length,
-    verts: outVerts, tris: outTris,
+    nVerts: fixed.verts.length / 3, nTris: fixed.tris.length,
+    verts: fixed.verts, tris: fixed.tris,
   };
 }
 
 // Round-trip sanity check: unzip (inflating if needed), XML must parse, per-part structure
 // and the Bambu model_settings.config must line up with what we meant to write.
-async function validate3MF(zipBytes, nTris, nParts) {
+async function validate3MF(zipBytes, nTris, nColors) {
   const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
   if (dv.getUint32(0, true) !== 0x04034b50) throw new Error("3MF validation: not a zip");
   let p = 0;
@@ -577,20 +621,19 @@ async function validate3MF(zipBytes, nTris, nParts) {
   const doc = new DOMParser().parseFromString(modelXml, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
   const meshObjs = [...doc.getElementsByTagName("object")].filter(o => o.getElementsByTagName("mesh").length);
-  const t = doc.getElementsByTagName("triangle").length;
-  const comps = doc.getElementsByTagName("component").length;
-  if (t !== nTris) throw new Error(`3MF validation: triangle count mismatch (${t}/${nTris})`);
-  if (meshObjs.length !== nParts || comps !== nParts)
-    throw new Error(`3MF validation: part count mismatch (${meshObjs.length} meshes, ${comps} components, expected ${nParts})`);
+  if (meshObjs.length !== 1) throw new Error(`3MF validation: expected 1 mesh object, found ${meshObjs.length}`);
+  const triEls = [...doc.getElementsByTagName("triangle")];
+  if (triEls.length !== nTris) throw new Error(`3MF validation: triangle count mismatch (${triEls.length}/${nTris})`);
+  const unpainted = triEls.filter(el => !el.getAttribute("paint_color")).length;
+  if (unpainted) throw new Error(`3MF validation: ${unpainted} triangles missing paint_color`);
+  const states = new Set(triEls.map(el => el.getAttribute("paint_color")));
+  if (states.size !== nColors)
+    throw new Error(`3MF validation: ${states.size} distinct paint states, expected ${nColors}`);
   const cfg = files["Metadata/model_settings.config"];
   if (!cfg) throw new Error("3MF validation: model_settings.config missing");
-  const cfgDoc = new DOMParser().parseFromString(cfg, "application/xml");
-  if (cfgDoc.querySelector("parsererror")) throw new Error("3MF validation: config XML malformed");
-  const cfgIds = [...cfgDoc.getElementsByTagName("part")].map(el => el.getAttribute("id")).sort();
-  const meshIds = meshObjs.map(o => o.getAttribute("id")).sort();
-  if (cfgIds.join() !== meshIds.join())
-    throw new Error(`3MF validation: config part ids [${cfgIds}] != mesh object ids [${meshIds}]`);
-  log(`3MF validated: ${nParts} parts, ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
+  if (new DOMParser().parseFromString(cfg, "application/xml").querySelector("parsererror"))
+    throw new Error("3MF validation: config XML malformed");
+  log(`3MF validated: 1 solid object, ${nColors} paint colors, ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
 }
 
 /* ============================================================ results UI */
