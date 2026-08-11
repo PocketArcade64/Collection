@@ -61,11 +61,12 @@
   #preview-label { position: absolute; top: 0.5rem; left: 0.8rem; color: var(--dim); font-size: 0.8rem; pointer-events: none; }
   .hint { color: var(--dim); font-size: 0.78rem; margin-top: 0.4rem; }
   a { color: var(--accent2); }
+  code { background: var(--panel2); padding: 0 3px; border-radius: 3px; font-size: 0.9em; }
 </style>
 </head>
 <body>
 <h1>Pokémon Quest → 3MF Converter</h1>
-<div class="sub">Bakes each voxel face's texture color into Bambu Studio's per-triangle filament painting (paint_color) on a single watertight mesh — imports and slices like a hand-painted model in Bambu Studio / OrcaSlicer.</div>
+<div class="sub">Bakes each voxel face's texture color onto a single watertight mesh, written both as a standard 3MF <code>colorgroup</code> (what Bambu Studio's "Standard 3MF Color Parsing" dialog reads) and as Bambu's per-triangle <code>paint_color</code>. Every model is audited for non-manifold edges before you can download it.</div>
 
 <div class="cols">
   <div class="col">
@@ -103,6 +104,7 @@
         <div id="preview-label">— nothing converted yet —</div>
       </div>
       <div class="hint">Drag to rotate · wheel to zoom. Colors shown are the exact baked per-face colors going into the 3MF.</div>
+      <div class="hint">Load at least as many filaments in Bambu Studio as the model has colors <em>before</em> importing, or the color-mapping dialog will have nothing to map to.</div>
     </div>
 
     <div class="panel">
@@ -341,61 +343,265 @@ function mergePalette(faceColors, tolerance, maxColors) {
 /* ============================================================ mesh repair */
 // Quest models are assemblies of voxel boxes; limbs/features are open boxes missing the
 // hidden face where they plug into the body. Slicers hit those open shells as broken
-// contours → "empty layer" errors. Weld duplicate vertices (UV-seam copies), then cap
-// every open boundary loop with a fan (caps sit hidden inside the body).
-function weldAndCap(verts, tris) {
-  // weld exact-duplicate positions so topology connects across UV seams
-  const posId = new Map(), canon = new Array(verts.length / 3);
-  const outVerts = [];
+// contours. Pipeline: weld UV-seam duplicates -> drop junk triangles -> split
+// non-manifold vertices -> chain boundary edges into closed loops -> cap each loop.
+
+// Every undirected edge of a closed orientable surface must be used exactly twice, once
+// in each direction. Anything else is what Bambu Studio reports as a non-manifold edge.
+function auditManifold(tris) {
+  const use = new Map();
+  for (const t of tris) for (let k = 0; k < 3; k++) {
+    const a = t.v[k], b = t.v[(k + 1) % 3];
+    const key = a < b ? a + "_" + b : b + "_" + a;
+    let e = use.get(key);
+    if (!e) use.set(key, e = { f: 0, r: 0 });
+    if (a < b) e.f++; else e.r++;
+  }
+  let open = 0, over = 0, flipped = 0;
+  for (const e of use.values()) {
+    const n = e.f + e.r;
+    if (n === 1) open++;
+    else if (n > 2) over++;
+    else if (e.f !== 1) flipped++;
+  }
+  return { open, over, flipped, bad: open + over + flipped };
+}
+
+// Ear clipping in 2D. A corner fan is only valid for convex loops; plug-holes in these
+// models are often L- or T-shaped, where a fan throws a triangle outside the hole.
+function earClip(n, px, py) {
+  const out = [];
+  if (n < 3) return out;
+  const idx = [...Array(n).keys()];
+  const cross = (o, a, b) => (px[a] - px[o]) * (py[b] - py[o]) - (py[a] - py[o]) * (px[b] - px[o]);
+  const inTri = (a, b, c, p) => {
+    const d1 = cross(a, b, p), d2 = cross(b, c, p), d3 = cross(c, a, p);
+    return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < n * n + 16) {
+    let clipped = false;
+    for (let k = 0; k < idx.length; k++) {
+      const L = idx.length;
+      const a = idx[(k + L - 1) % L], b = idx[k], c = idx[(k + 1) % L];
+      if (cross(a, b, c) <= 0) continue;                 // reflex or collinear
+      let bad = false;
+      for (const m of idx) {
+        if (m === a || m === b || m === c) continue;
+        if (inTri(a, b, c, m)) { bad = true; break; }
+      }
+      if (bad) continue;
+      out.push([a, b, c]);
+      idx.splice(k, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;                                  // give up, fan the remainder
+  }
+  for (let i = 1; i + 1 < idx.length; i++) out.push([idx[0], idx[i], idx[i + 1]]);
+  return out;
+}
+
+function repairMesh(verts, tris) {
+  /* 1. weld coincident vertices so topology connects across UV seams. Quantised to
+        1e-4 mm - far below print resolution, but enough to absorb float noise. */
+  const Q = 1e4, qk = (x) => Math.round(x * Q);
+  const posId = new Map(), canon = new Int32Array(verts.length / 3);
+  const V = [];
   for (let i = 0; i < verts.length / 3; i++) {
-    const key = verts[i * 3] + "," + verts[i * 3 + 1] + "," + verts[i * 3 + 2];
+    const key = qk(verts[i * 3]) + "," + qk(verts[i * 3 + 1]) + "," + qk(verts[i * 3 + 2]);
     let id = posId.get(key);
     if (id === undefined) {
-      id = outVerts.length / 3;
+      id = V.length / 3;
       posId.set(key, id);
-      outVerts.push(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+      V.push(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
     }
     canon[i] = id;
   }
-  const outTris = [];
+
+  /* 2. drop collapsed triangles and same-winding duplicates. Opposite-winding
+        coincident pairs are LEFT ALONE: they are already edge-balanced, and deleting
+        one of them would tear open a new hole. */
+  const seen = new Set(), T = [];
+  let nDegen = 0, nDup = 0;
   for (const t of tris) {
     const v = [canon[t.v[0]], canon[t.v[1]], canon[t.v[2]]];
-    if (v[0] === v[1] || v[1] === v[2] || v[2] === v[0]) continue;   // collapsed by welding
-    outTris.push({ v, p: t.p });
+    if (v[0] === v[1] || v[1] === v[2] || v[2] === v[0]) { nDegen++; continue; }
+    const m = (v[0] <= v[1] && v[0] <= v[2]) ? 0 : (v[1] <= v[2] ? 1 : 2);
+    const key = v[m] + "_" + v[(m + 1) % 3] + "_" + v[(m + 2) % 3];
+    if (seen.has(key)) { nDup++; continue; }
+    seen.add(key);
+    T.push({ v, p: t.p });
   }
-  // directed edge map: an edge a→b with no partner b→a lies on an open boundary
-  const dir = new Map();
-  for (let i = 0; i < outTris.length; i++) {
-    const v = outTris[i].v;
-    for (let k = 0; k < 3; k++) dir.set(v[k] + "," + v[(k + 1) % 3], i);
-  }
-  const nextOf = new Map();   // boundary edges chained tail → {head, ownerTri}
-  for (const [key, tri] of dir) {
-    const [a, b] = key.split(",").map(Number);
-    if (!dir.has(b + "," + a)) nextOf.set(a, { to: b, tri });
-  }
-  let holes = 0, capTris = 0;
-  while (nextOf.size) {
-    const [start, first] = nextOf.entries().next().value;
-    const loop = [start];
-    let cur = first, guard = 0;
-    nextOf.delete(start);
-    while (cur.to !== start && guard++ < 100000) {
-      loop.push(cur.to);
-      const nxt = nextOf.get(cur.to);
-      nextOf.delete(cur.to);
-      if (!nxt) break;   // broken chain (non-manifold weirdness) — cap what we have
-      cur = nxt;
+  const nSurface = T.length;
+
+  /* 3. split non-manifold vertices. Welding by position also fuses boxes that merely
+        TOUCH at a corner. Around such a vertex the triangle fan falls into two pieces
+        that are not edge-connected, and leaving them fused is what produces a pinch
+        vertex - the direct cause of a stray non-manifold edge. UV-seam duplicates
+        inside a single box stay fused, because those fans ARE edge-connected. */
+  let nVertSplit = 0;
+  {
+    const fan = new Map();
+    for (let i = 0; i < T.length; i++) for (const v of T[i].v) {
+      let a = fan.get(v);
+      if (!a) fan.set(v, a = []);
+      a.push(i);
     }
-    if (loop.length < 3) continue;
-    // fan-triangulate reversed so cap winding opposes the boundary edges (outward normals)
-    for (let i = 1; i + 1 < loop.length; i++) {
-      outTris.push({ v: [loop[0], loop[i + 1], loop[i]], p: outTris[first.tri].p });
+    for (const [vid, tl] of fan) {
+      if (tl.length < 2) continue;
+      const pos = new Map(tl.map((t, i) => [t, i]));
+      const par = tl.map((_, i) => i);
+      const find = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+      const byOther = new Map();
+      for (const t of tl) {
+        const v = T[t].v, k = v.indexOf(vid);
+        for (const nb of [v[(k + 1) % 3], v[(k + 2) % 3]]) {
+          let a = byOther.get(nb);
+          if (!a) byOther.set(nb, a = []);
+          a.push(t);
+        }
+      }
+      for (const group of byOther.values()) for (let i = 1; i < group.length; i++) {
+        const x = find(pos.get(group[0])), y = find(pos.get(group[i]));
+        if (x !== y) par[y] = x;
+      }
+      const rootToVid = new Map();
+      for (const t of tl) {
+        const r = find(pos.get(t));
+        let nv = rootToVid.get(r);
+        if (nv === undefined) {
+          if (rootToVid.size === 0) nv = vid;              // first component keeps the id
+          else { nv = V.length / 3; V.push(V[vid * 3], V[vid * 3 + 1], V[vid * 3 + 2]); nVertSplit++; }
+          rootToVid.set(r, nv);
+        }
+        if (nv !== vid) {
+          const v = T[t].v;
+          for (let k = 0; k < 3; k++) if (v[k] === vid) v[k] = nv;
+        }
+      }
+    }
+  }
+
+  /* 4. directed-edge multiplicity. An a->b occurring more often than its b->a partner
+        leaves (count - reverseCount) unmatched boundary edges - counted, not just
+        flagged, so duplicated edges cannot silently overwrite each other. */
+  const dcount = new Map(), owner = new Map();
+  for (let i = 0; i < T.length; i++) {
+    const v = T[i].v;
+    for (let k = 0; k < 3; k++) {
+      const key = v[k] + "," + v[(k + 1) % 3];
+      dcount.set(key, (dcount.get(key) || 0) + 1);
+      if (!owner.has(key)) owner.set(key, i);
+    }
+  }
+  // tail -> LIST of outgoing boundary edges. A list, not one entry: a vertex can be the
+  // tail of several boundary edges at once, and keeping only one stitches separate holes
+  // into a single bogus loop whose cap leaves a non-manifold edge behind.
+  const adj = new Map();
+  let nBoundary = 0;
+  for (const [key, n] of dcount) {
+    const c = key.indexOf(",");
+    const a = +key.slice(0, c), b = +key.slice(c + 1);
+    const surplus = n - (dcount.get(b + "," + a) || 0);
+    if (surplus <= 0) continue;
+    let arr = adj.get(a);
+    if (!arr) adj.set(a, arr = []);
+    for (let s = 0; s < surplus; s++) arr.push({ to: b, tri: owner.get(key) });
+    nBoundary += surplus;
+  }
+
+  /* 5. chain boundary edges into loops, consuming each edge exactly once. If the walk
+        revisits a vertex already on the chain, that closes a SUB-loop: emit it, rewind
+        to that point, keep walking. Partial chains are never capped - capping an
+        unclosed chain is itself a way to manufacture non-manifold edges. */
+  const tails = [...adj.keys()];
+  const loops = [];
+  let unclosed = 0, ti = 0;
+  for (;;) {
+    while (ti < tails.length && !adj.get(tails[ti]).length) ti++;
+    if (ti >= tails.length) break;
+    const start = tails[ti];
+    const stack = [];
+    const posIn = new Map([[start, 0]]);
+    let cur = start;
+    for (let guard = 0; guard <= nBoundary + 1; guard++) {
+      const arr = adj.get(cur);
+      if (!arr || !arr.length) break;                       // dead end
+      const e = arr.pop();
+      stack.push({ from: cur, to: e.to, tri: e.tri });
+      const at = posIn.get(e.to);
+      if (at === undefined) { posIn.set(e.to, stack.length); cur = e.to; continue; }
+      const seg = stack.splice(at);
+      for (const s of seg) posIn.delete(s.from);
+      if (seg.length >= 3) loops.push(seg); else unclosed++;
+      if (!stack.length) break;
+      cur = e.to;
+      posIn.set(cur, stack.length);
+    }
+    unclosed += stack.length;
+  }
+
+  /* 6. cap every closed loop */
+  let capTris = 0;
+  const elen = (a, b) => Math.hypot(V[a*3] - V[b*3], V[a*3+1] - V[b*3+1], V[a*3+2] - V[b*3+2]);
+  for (const seg of loops) {
+    const loop = seg.map(e => e.from), owners = seg.map(e => e.tri), L = loop.length;
+
+    // Colour by MAJORITY VOTE over the whole hole boundary, weighted by edge length,
+    // rather than inheriting from one arbitrary boundary edge.
+    const bEdge = new Map();          // "a,b" -> palette index of the owning triangle
+    const score = new Map();
+    for (let i = 0; i < L; i++) {
+      const a = loop[i], b = loop[(i + 1) % L], p = T[owners[i]].p;
+      bEdge.set(a + "," + b, p);
+      score.set(p, (score.get(p) || 0) + (elen(a, b) || 1e-6));
+    }
+    let loopP = T[owners[0]].p, bestW = -1;
+    for (const [p, w] of score) if (w > bestW) { bestW = w; loopP = p; }
+
+    // Newell normal -> drop the dominant axis -> ear-clip in that plane.
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < L; i++) {
+      const a = loop[i], b = loop[(i + 1) % L];
+      const ax = V[a*3], ay = V[a*3+1], az = V[a*3+2];
+      const bx = V[b*3], by = V[b*3+1], bz = V[b*3+2];
+      nx += (ay - by) * (az + bz); ny += (az - bz) * (ax + bx); nz += (ax - bx) * (ay + by);
+    }
+    const fx = Math.abs(nx), fy = Math.abs(ny), fz = Math.abs(nz);
+    const drop = (fz >= fx && fz >= fy) ? 2 : (fy >= fx ? 1 : 0);
+    const cu = drop === 0 ? 1 : 0, cv = drop === 2 ? 1 : 2;
+
+    // Reverse the loop so cap edges oppose the boundary edges (outward-facing caps).
+    const poly = loop.slice().reverse();
+    const px = new Float64Array(L), py = new Float64Array(L);
+    for (let i = 0; i < L; i++) { px[i] = V[poly[i]*3 + cu]; py[i] = V[poly[i]*3 + cv]; }
+    let area2 = 0;
+    for (let i = 0; i < L; i++) { const j = (i + 1) % L; area2 += px[i]*py[j] - px[j]*py[i]; }
+    if (area2 < 0) for (let i = 0; i < L; i++) py[i] = -py[i];   // mirror, keep index order
+
+    for (const tri of earClip(L, px, py)) {
+      const v = [poly[tri[0]], poly[tri[1]], poly[tri[2]]];
+      // A cap triangle touching the rim takes the colour of the boundary it touches;
+      // interior cap triangles fall back to the loop-wide vote.
+      const local = new Map();
+      for (let k = 0; k < 3; k++) {
+        const a = v[k], b = v[(k + 1) % 3];
+        const p = bEdge.get(b + "," + a);                   // caps run against the rim
+        if (p !== undefined) local.set(p, (local.get(p) || 0) + elen(a, b));
+      }
+      let capP = loopP, lw = -1;
+      for (const [p, w] of local) if (w > lw) { lw = w; capP = p; }
+      T.push({ v, p: capP });
       capTris++;
     }
-    holes++;
   }
-  return { verts: outVerts, tris: outTris, holes, capTris };
+
+  return {
+    verts: V, tris: T, holes: loops.length, capTris,
+    unclosed, nDegen, nDup, nVertSplit, nSurface,
+    audit: auditManifold(T),
+  };
 }
 
 /* ============================================================ 3MF writer */
@@ -406,9 +612,14 @@ const fmtNum = (n) => { const s = n.toFixed(3); return s.includes(".") ? s.repla
 // verts: Float64Array-ish [x,y,z,...] already in final mm coords (Z-up).
 // tris: [{v:[a,b,c], p: paletteIndex}], palette: [[r,g,b],...]
 // The mesh must stay ONE watertight object — splitting it per color produces open shells that
-// slice with empty layers. Multi-color goes in as Bambu Studio's per-triangle paint_color
-// attribute (the same data its manual painting tool saves), which slicers segment internally.
-// Core-spec basematerials + p1 are also written for spec-compliant viewers.
+// slice with empty layers. Colour is written TWICE, because the two readers differ:
+//   1. <m:colorgroup> from the 3MF Materials & Properties Extension, referenced per triangle
+//      via p1. This is the documented path a non-Bambu 3MF has to use: it is what triggers
+//      Bambu Studio's "Standard 3MF Color Parsing" dialog, and what OrcaSlicer/PrusaSlicer
+//      read natively. The previous <basematerials> block is a *physical material* list, not
+//      a colour list, and does not drive that dialog.
+//   2. paint_color, Bambu's own per-triangle painting attribute (the same data its manual
+//      Color Painting tool saves), kept as a belt-and-braces second channel.
 
 // paint_color encoding (TriangleSelector::serialize + FacetsAnnotation::get_triangle_as_string):
 // leaf triangle, filament N ⇒ state n=N: nibble n<<2 if n<3, else 0xC then nibble (n-3);
@@ -425,8 +636,7 @@ function paintColorFor(filament) {
 
 async function write3MF(title, verts, tris, palette) {
   const colHex = (c) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`;
-  const bases = palette.map((c, i) =>
-    `<base name="Color ${i + 1} (${colHex(c)})" displaycolor="${colHex(c)}"/>`).join("\n   ");
+  const colors = palette.map((c) => `<m:color color="${colHex(c)}"/>`).join("\n   ");
   const paint = palette.map((_, p) => paintColorFor(p + 1));
   const vXml = [];
   for (let i = 0; i < verts.length; i += 3)
@@ -435,13 +645,13 @@ async function write3MF(title, verts, tris, palette) {
     `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${t.p}" paint_color="${paint[t.p]}"/>`);
   const model =
 `<?xml version="1.0" encoding="UTF-8"?>
-<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
  <metadata name="Title">${xmlEsc(title)}</metadata>
  <metadata name="Application">Pokémon Quest 3MF Converter</metadata>
  <resources>
-  <basematerials id="1">
-   ${bases}
-  </basematerials>
+  <m:colorgroup id="1">
+   ${colors}
+  </m:colorgroup>
   <object id="2" name="${xmlEsc(title)}" type="model" pid="1" pindex="0">
    <mesh>
     <vertices>
@@ -581,15 +791,24 @@ async function convertModel(ctx, { shiny = false } = {}) {
   }
   const dims = [(maxX - minX) * scale, (maxY - minY) * scale, (maxZ - minZ) * scale];
 
-  const fixed = weldAndCap(outVerts, outTris);
-  if (fixed.holes)
-    log(`${ctx.label}: welded seams, capped ${fixed.holes} hidden openings (+${fixed.capTris} tris)`, "dim");
+  const fixed = repairMesh(outVerts, outTris);
+  const bits = [];
+  if (fixed.nDup)       bits.push(`${fixed.nDup} duplicate tris removed`);
+  if (fixed.nDegen)     bits.push(`${fixed.nDegen} collapsed tris removed`);
+  if (fixed.nVertSplit) bits.push(`${fixed.nVertSplit} non-manifold vertices split`);
+  if (fixed.holes)      bits.push(`${fixed.holes} openings capped (+${fixed.capTris} tris)`);
+  if (bits.length) log(`${ctx.label}: ${bits.join(", ")}`, "dim");
+  if (fixed.unclosed)
+    log(`${ctx.label}: ${fixed.unclosed} boundary edge(s) formed no closed loop and were left uncapped`, "err");
+  const a = fixed.audit;
+  if (a.bad === 0) log(`${ctx.label}: mesh is closed and manifold (0 bad edges)`, "ok");
+  else log(`${ctx.label}: ${a.bad} non-manifold edge(s) remain — ${a.open} open, ${a.over} shared by 3+ faces, ${a.flipped} mis-wound`, "err");
 
   const title = ctx.label + (shiny ? " (Shiny)" : "");
   const zip = await write3MF(title, fixed.verts, fixed.tris, palette);
   await validate3MF(zip, fixed.tris.length, palette.length);   // throws on failure
   return {
-    title, zip, palette, dims,
+    title, zip, palette, dims, audit: a,
     nVerts: fixed.verts.length / 3, nTris: fixed.tris.length,
     verts: fixed.verts, tris: fixed.tris,
   };
@@ -627,13 +846,20 @@ async function validate3MF(zipBytes, nTris, nColors) {
   const unpainted = triEls.filter(el => !el.getAttribute("paint_color")).length;
   if (unpainted) throw new Error(`3MF validation: ${unpainted} triangles missing paint_color`);
   const states = new Set(triEls.map(el => el.getAttribute("paint_color")));
-  if (states.size !== nColors)
-    throw new Error(`3MF validation: ${states.size} distinct paint states, expected ${nColors}`);
+  if (states.size > nColors)
+    throw new Error(`3MF validation: ${states.size} distinct paint states, expected at most ${nColors}`);
+  // the colorgroup is the channel Bambu Studio's Standard 3MF Color Parsing dialog reads
+  const cg = doc.getElementsByTagName("m:colorgroup");
+  if (!cg.length) throw new Error("3MF validation: m:colorgroup missing");
+  if (cg[0].getElementsByTagName("m:color").length !== nColors)
+    throw new Error("3MF validation: colorgroup size does not match palette");
+  const noP1 = triEls.filter(el => el.getAttribute("p1") === null).length;
+  if (noP1) throw new Error(`3MF validation: ${noP1} triangles missing p1 colour index`);
   const cfg = files["Metadata/model_settings.config"];
   if (!cfg) throw new Error("3MF validation: model_settings.config missing");
   if (new DOMParser().parseFromString(cfg, "application/xml").querySelector("parsererror"))
     throw new Error("3MF validation: config XML malformed");
-  log(`3MF validated: 1 solid object, ${nColors} paint colors, ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
+  log(`3MF validated: 1 solid object, ${nColors} colors (colorgroup + paint_color), ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
 }
 
 /* ============================================================ results UI */
@@ -645,9 +871,13 @@ function addResultCard(res) {
   card.className = "card";
   const sws = res.palette.slice(0, 24).map(c =>
     `<span class="sw" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`).join("");
+  const bad = res.audit ? res.audit.bad : 0;
+  const health = bad === 0
+    ? `<span style="color:var(--ok)">✓ watertight</span>`
+    : `<span style="color:var(--err)">⚠ ${bad} bad edge${bad === 1 ? "" : "s"}</span>`;
   card.innerHTML =
     `<span class="name">${xmlEsc(res.title)}</span>
-     <span class="stats">${res.nTris} tris · ${res.palette.length} colors · ${res.dims.map(d => d.toFixed(0)).join("×")} mm</span>
+     <span class="stats">${res.nTris} tris · ${res.palette.length} colors · ${res.dims.map(d => d.toFixed(0)).join("×")} mm · ${health}</span>
      <span class="swatches">${sws}</span>`;
   const btn = document.createElement("button");
   btn.className = "small";
