@@ -1,0 +1,1226 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Magical Athlete — Card Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Farro:wght@300;400;500;700&family=Archivo+Black&display=swap" rel="stylesheet">
+<style>
+/* GT Flaire if the designer has it installed locally; otherwise a heavy fallback */
+@font-face{
+  font-family:'MADisplay';
+  src:local('GT Flaire Basic Heavy'),local('GTFlaireBasic-Heavy'),local('GT Flaire Heavy'),
+      local('GT Flaire Basic Bold'),local('GTFlaireBasic-Bold'),local('GT Flaire Bold');
+  font-weight:700 900; font-display:swap;
+}
+:root{
+  --ink:#1E1C1C; --paper:#F2EFE6; --mint:#D5E8C6; --yellow:#F8DF05;
+  --blue:#659BD8; --green:#288F3E; --red:#EF381F; --pink:#D969BB; --purple:#A77FC6;
+  --rail:#1A1818; --rail2:#262322; --line:#3A3634; --dim:#9C9793;
+  --disp:'MADisplay','Archivo Black','Farro',system-ui,sans-serif;
+  --body:'Farro',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--body); background:var(--rail); color:var(--paper);
+  font-size:13px; -webkit-font-smoothing:antialiased; overflow:hidden;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+#app{display:grid;grid-template-rows:auto 1fr;height:100%}
+
+/* ---------- top bar ---------- */
+header{
+  display:flex;align-items:center;gap:14px;padding:9px 14px;
+  background:var(--ink);border-bottom:1px solid var(--line);
+}
+.wordmark{font-family:var(--disp);font-size:17px;letter-spacing:-.02em;line-height:.95;text-transform:uppercase}
+.wordmark small{display:block;font-family:var(--body);font-weight:400;font-size:9.5px;letter-spacing:.16em;color:var(--dim)}
+.spec{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.tag b{color:var(--mint);font-weight:700}
+
+/* ---------- 3 column body ---------- */
+main{display:grid;grid-template-columns:186px 1fr 336px;min-height:0}
+.col{min-height:0;display:flex;flex-direction:column}
+.deck{background:var(--rail2);border-right:1px solid var(--line)}
+.insp{background:var(--rail2);border-left:1px solid var(--line)}
+.colhead{
+  display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line);
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);flex:0 0 auto
+}
+.scroll{overflow:auto;padding:10px;flex:1 1 auto;scrollbar-width:thin}
+
+/* deck strip */
+.thumbs{display:flex;flex-direction:column;gap:8px}
+.thumb{position:relative;border:2px solid transparent;border-radius:9px;padding:0;background:none;display:block;line-height:0}
+.thumb canvas{width:100%;height:auto;border-radius:7px;display:block}
+.thumb[aria-current="true"]{border-color:var(--yellow)}
+.thumb .nm{
+  position:absolute;left:4px;right:4px;bottom:4px;font-size:9.5px;line-height:1.2;text-align:center;
+  background:rgba(30,28,28,.86);color:var(--paper);border-radius:5px;padding:2px 3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.deckbtns{display:flex;gap:6px;padding:10px;border-top:1px solid var(--line)}
+.deckbtns button{flex:1}
+
+/* stage */
+.stage{
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255,255,255,.07) 1px, transparent 1.6px) 0 0/9px 9px,
+    #121110;
+  display:flex;align-items:flex-start;justify-content:flex-start;overflow:auto;padding:22px;flex:1 1 auto
+}
+/* auto margins center the content without cutting off overflow the way align-items:center does */
+.stagewrap{position:relative;margin:auto;display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.cardbox{position:relative}
+.cardbox canvas{display:block;box-shadow:0 18px 44px rgba(0,0,0,.55);border-radius:2px}
+.cardbox figcaption{margin-top:8px;text-align:center;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.stagebar{display:flex;gap:8px;align-items:center;padding:9px 14px;border-top:1px solid var(--line);background:var(--ink);flex:0 0 auto;flex-wrap:wrap}
+
+/* controls */
+label.f{display:block;margin:0 0 11px}
+label.f > span{display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:5px}
+input[type=text],textarea,select{
+  width:100%;background:#141312;border:1px solid var(--line);border-radius:7px;padding:8px 9px;
+  font-size:13px;outline:none
+}
+textarea{resize:vertical;min-height:74px;line-height:1.45}
+input[type=text]:focus,textarea:focus,select:focus{border-color:var(--yellow)}
+input[type=range]{width:100%;accent-color:var(--yellow)}
+.btn{background:#141312;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:12px}
+.btn:hover{border-color:var(--dim)}
+.btn.pri{background:var(--yellow);border-color:var(--yellow);color:var(--ink);font-weight:700}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn.mint{background:var(--mint);border-color:var(--mint);color:var(--ink);font-weight:700}
+.btn.sm{padding:5px 8px;font-size:11px}
+.row{display:flex;gap:7px}
+.row > *{flex:1;min-width:0}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;background:#141312;border:0;padding:7px 4px;font-size:11px;color:var(--dim);border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);font-weight:700}
+.tabs{display:flex;border-bottom:1px solid var(--line);flex:0 0 auto}
+.tabs button{flex:1;background:none;border:0;padding:11px 4px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);border-bottom:2px solid transparent}
+.tabs button[aria-selected="true"]{color:var(--paper);border-bottom-color:var(--yellow)}
+fieldset{border:1px solid var(--line);border-radius:9px;padding:11px;margin:0 0 12px}
+legend{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);padding:0 5px}
+.hint{font-size:11px;line-height:1.5;color:var(--dim)}
+.chk{display:flex;align-items:center;gap:8px;margin:0 0 9px;font-size:12px}
+.chk input{accent-color:var(--yellow);width:15px;height:15px}
+
+/* signature: concentric ring color editor */
+.ringed{display:flex;gap:13px;align-items:center}
+.ringview{width:96px;height:96px;flex:0 0 auto;border-radius:12px;background:var(--ink);padding:0;position:relative;overflow:hidden}
+.ringview i{position:absolute;border-radius:9px;inset:0;display:block}
+.ringslots{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0}
+.slot{display:flex;align-items:center;gap:8px}
+.slot span{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+input[type=color]{width:30px;height:24px;padding:0;border:1px solid var(--line);border-radius:5px;background:none;flex:0 0 auto}
+.sw{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.sw button{width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.22);padding:0}
+.sw button:hover{transform:scale(1.14)}
+
+.toast{
+  position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--mint);color:var(--ink);
+  font-weight:700;font-size:12.5px;padding:10px 16px;border-radius:999px;opacity:0;pointer-events:none;
+  transition:opacity .2s, transform .2s;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:88vw;text-align:center
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(-4px)}
+.drop{border:1.5px dashed var(--line);border-radius:9px;padding:16px 12px;text-align:center;font-size:11.5px;color:var(--dim)}
+.drop.hot{border-color:var(--yellow);color:var(--paper)}
+progress{width:100%;height:6px;accent-color:var(--yellow)}
+
+@media (max-width:1000px){
+  body{overflow:auto}
+  main{grid-template-columns:1fr;grid-template-rows:auto auto auto}
+  .deck,.insp{border:0;border-bottom:1px solid var(--line)}
+  .deck .scroll .thumbs{flex-direction:row;overflow:auto}
+  .deck .scroll{max-height:none}
+  .thumb{width:96px;flex:0 0 auto}
+  .stage{padding:14px}
+  .insp .scroll{max-height:none}
+}
+</style>
+
+<div id="app">
+  <header>
+    <div class="wordmark">Card Studio<small>Magical Athlete</small></div>
+    <div class="spec">
+      <span class="tag">Trim <b>63 × 88 mm</b></span>
+      <span class="tag">Bleed <b>3.175 mm</b></span>
+      <span class="tag">Safe <b>4 mm</b></span>
+    </div>
+  </header>
+
+  <main>
+    <!-- DECK -->
+    <section class="col deck">
+      <div class="colhead"><span>Deck</span><span id="deckcount" style="margin-left:auto"></span></div>
+      <div class="scroll"><div class="thumbs" id="thumbs"></div></div>
+      <div class="deckbtns">
+        <button class="btn sm" id="addCard">+ Card</button>
+        <button class="btn sm" id="dupCard">Duplicate</button>
+        <button class="btn sm" id="delCard">Delete</button>
+      </div>
+    </section>
+
+    <!-- STAGE -->
+    <section class="col">
+      <div class="stage">
+        <div class="stagewrap">
+          <figure class="cardbox" style="margin:0"><canvas id="cv"></canvas><figcaption id="cap">Front</figcaption></figure>
+          <figure class="cardbox" id="backbox" style="margin:0;display:none"><canvas id="cvb"></canvas><figcaption>Back</figcaption></figure>
+        </div>
+      </div>
+      <div class="stagebar">
+        <div class="seg" style="max-width:210px">
+          <button data-view="trim" aria-pressed="true">Trim</button>
+          <button data-view="bleed">Bleed</button>
+          <button data-view="guides">Guides</button>
+        </div>
+        <label class="chk" style="margin:0"><input type="checkbox" id="showBack"> Show back</label>
+        <span class="hint" id="zoomlab" style="margin-left:auto"></span>
+        <input type="range" id="zoom" min="1.4" max="4.6" step=".1" value="2.6" style="max-width:150px">
+      </div>
+    </section>
+
+    <!-- INSPECTOR -->
+    <section class="col insp">
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="design">Design</button>
+        <button role="tab" data-tab="art">Art</button>
+        <button role="tab" data-tab="back">Back</button>
+        <button role="tab" data-tab="export">Export</button>
+      </div>
+      <div class="scroll">
+
+        <!-- DESIGN -->
+        <div data-panel="design">
+          <label class="f"><span>Character name</span><input type="text" id="name" placeholder="Alchemist"></label>
+          <label class="f"><span>Power text</span><textarea id="rule" placeholder="When I roll a 1 or 2 for my main move, I can move 4 instead."></textarea></label>
+          <label class="f"><span>Power tab</span><input type="text" id="tab" placeholder="TRANSMUTE 'N' SCOOT"></label>
+
+          <fieldset>
+            <legend>Frame colors</legend>
+            <div class="ringed">
+              <div class="ringview" id="ringview" aria-hidden="true">
+                <i data-ring="1"></i><i data-ring="2"></i><i data-ring="3"></i><i data-ring="4"></i>
+              </div>
+              <div class="ringslots">
+                <div class="slot"><span>Outer ring</span><input type="color" id="c1"></div>
+                <div class="slot"><span>Middle ring</span><input type="color" id="c2"></div>
+                <div class="slot"><span>Art keyline</span><input type="color" id="c3"></div>
+                <div class="slot"><span>Tab &amp; bubble</span><input type="color" id="c4"></div>
+              </div>
+            </div>
+            <div class="sw" id="swatches"></div>
+            <div class="row" style="margin-top:9px">
+              <button class="btn sm" id="randomFrame">Shuffle frame</button>
+              <button class="btn sm" id="copyFrame">Copy frame</button>
+              <button class="btn sm" id="pasteFrame">Paste</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Title</legend>
+            <div class="seg" style="margin-bottom:10px" id="titleAlign">
+              <button data-al="left">Left</button><button data-al="center" aria-pressed="true">Center</button><button data-al="right">Right</button>
+            </div>
+            <label class="f"><span>Size <i id="tsv"></i></span><input type="range" id="tsize" min="11" max="26" step=".5"></label>
+            <label class="f"><span>Drop <i id="tdv"></i></span><input type="range" id="tdrop" min="0" max="60" step="1"></label>
+            <label class="chk"><input type="checkbox" id="tshadow"> White outline behind title</label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Power text</legend>
+            <label class="f"><span>Size <i id="bsv"></i></span><input type="range" id="bsize" min="5.5" max="10" step=".1"></label>
+            <label class="f"><span>Line spacing <i id="blv"></i></span><input type="range" id="blead" min="1.05" max="1.6" step=".01"></label>
+          </fieldset>
+        </div>
+
+        <!-- ART -->
+        <div data-panel="art" hidden>
+          <fieldset>
+            <legend>Background</legend>
+            <label class="f"><span>Style</span>
+              <select id="bgStyle">
+                <option value="solid">Solid color</option>
+                <option value="sunburst">Sunburst wedges</option>
+                <option value="rays">Rays from a point</option>
+                <option value="horizon">Horizon (sky / ground)</option>
+                <option value="stripes">Diagonal stripes</option>
+              </select>
+            </label>
+            <div class="slot" style="margin-bottom:7px"><span>Color A</span><input type="color" id="bgA"></div>
+            <div class="slot" style="margin-bottom:7px"><span>Color B</span><input type="color" id="bgB"></div>
+            <div class="slot"><span>Color C</span><input type="color" id="bgC"></div>
+            <label class="f" style="margin-top:11px"><span>Count / position <i id="bgnv"></i></span><input type="range" id="bgN" min="2" max="40" step="1"></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Illustration</legend>
+            <div class="drop" id="drop">Drop a PNG or JPG here, or
+              <label style="text-decoration:underline;cursor:pointer">browse<input type="file" id="file" accept="image/*" hidden></label><br>
+              <span style="font-size:10.5px">Ink-line art on transparent PNG sits best over the background.</span>
+            </div>
+            <div id="artctl" hidden style="margin-top:11px">
+              <label class="f"><span>Scale <i id="azv"></i></span><input type="range" id="azoom" min="30" max="320" step="1"></label>
+              <label class="f"><span>Left / right <i id="axv"></i></span><input type="range" id="ax" min="-100" max="100" step="1"></label>
+              <label class="f"><span>Up / down <i id="ayv"></i></span><input type="range" id="ay" min="-100" max="100" step="1"></label>
+              <div class="row">
+                <button class="btn sm" id="artFlip">Flip</button>
+                <button class="btn sm" id="artFit">Fit</button>
+                <button class="btn sm" id="artClear">Remove</button>
+              </div>
+            </div>
+          </fieldset>
+        </div>
+
+        <!-- BACK -->
+        <div data-panel="back" hidden>
+          <p class="hint" style="margin-top:0">The stock back is redrawn as vector so it can fill the bleed at any size. Swap in your own file if you'd rather print the original artwork.</p>
+          <fieldset>
+            <legend>Sunburst back</legend>
+            <label class="f"><span>Wedges <i id="wkv"></i></span><input type="range" id="bkN" min="8" max="40" step="2"></label>
+            <label class="chk"><input type="checkbox" id="bkLogo" checked> Draw the wordmark</label>
+            <label class="f"><span>Wordmark size <i id="wlv"></i></span><input type="range" id="bkLogoSize" min="40" max="130" step="1"></label>
+            <div class="row"><button class="btn sm" id="bkColors">Shuffle colors</button><button class="btn sm" id="bkReset">Stock look</button></div>
+          </fieldset>
+          <fieldset>
+            <legend>Custom back image</legend>
+            <div class="drop" id="dropB">Drop an image, or
+              <label style="text-decoration:underline;cursor:pointer">browse<input type="file" id="fileB" accept="image/*" hidden></label><br>
+              <span style="font-size:10.5px">Export your back at 69.3 × 94.4 mm (bleed size) so nothing important lands in the trim.</span>
+            </div>
+            <div class="row" style="margin-top:9px"><button class="btn sm" id="clearB">Use sunburst again</button></div>
+          </fieldset>
+        </div>
+
+        <!-- EXPORT -->
+        <div data-panel="export" hidden>
+          <fieldset>
+            <legend>Mode 1 — Card fronts</legend>
+            <p class="hint" style="margin:0 0 10px">Flat images of the fronts, for sharing, mockups or a layout you build yourself.</p>
+            <div class="row" style="margin-bottom:9px">
+              <label class="f" style="margin:0"><span>Edge</span>
+                <select id="fEdge"><option value="trim">Trim only (63 × 88)</option><option value="bleed">With bleed (69.3 × 94.4)</option></select>
+              </label>
+              <label class="f" style="margin:0"><span>Resolution</span>
+                <select id="fDpi"><option>300</option><option selected>600</option><option>1200</option></select>
+              </label>
+            </div>
+            <label class="chk"><input type="checkbox" id="fTransparentCorners"> Rounded corners, transparent outside</label>
+            <div class="row">
+              <button class="btn pri" id="expOne">PNG — this card</button>
+              <button class="btn" id="expAll">PNG — whole deck</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Mode 2 — Print-ready sheets</legend>
+            <p class="hint" style="margin:0 0 10px">Real-world specs: 63 × 88 mm cards with 3.175 mm bleed, laid out with crop marks and matching backs.</p>
+            <div class="row" style="margin-bottom:9px">
+              <label class="f" style="margin:0"><span>Paper</span>
+                <select id="pPaper"><option value="letter">Letter</option><option value="a4">A4</option><option value="tabloid">Tabloid 11×17</option></select>
+              </label>
+              <label class="f" style="margin:0"><span>Card edge</span>
+                <select id="pEdge"><option value="bleed" selected>Bleed + crop marks</option><option value="trim">Trim, cards touching</option></select>
+              </label>
+            </div>
+            <label class="f"><span>Sides</span>
+              <select id="pSides">
+                <option value="duplex-long" selected>Double-sided — flip on long edge</option>
+                <option value="duplex-short">Double-sided — flip on short edge</option>
+                <option value="separate">Double-sided — all fronts, then all backs</option>
+                <option value="fronts">Fronts only</option>
+              </select>
+            </label>
+            <div class="row" style="margin-bottom:9px">
+              <label class="f" style="margin:0"><span>Render DPI</span>
+                <select id="pDpi"><option>300</option><option selected>400</option><option>600</option></select>
+              </label>
+              <label class="f" style="margin:0"><span>Copies of each</span><input type="text" id="pCopies" value="1" inputmode="numeric"></label>
+            </div>
+            <p class="hint" id="layoutInfo" style="margin:0 0 10px"></p>
+            <button class="btn pri" style="width:100%" id="expSheets">Build print PDF</button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Mode 3 — One card per page</legend>
+            <p class="hint" style="margin:0 0 10px">Single 69.3 × 94.4 mm pages at bleed size — the format print services want for uploads.</p>
+            <button class="btn mint" style="width:100%" id="expSingles">Build single-card PDF</button>
+          </fieldset>
+
+          <fieldset>
+            <legend>Deck file</legend>
+            <div class="row">
+              <button class="btn sm" id="expJson">Save deck (.json)</button>
+              <label class="btn sm" style="text-align:center">Load deck<input type="file" id="impJson" accept=".json,application/json" hidden></label>
+            </div>
+            <p class="hint" style="margin:9px 0 0">Your deck also saves itself here between visits.</p>
+          </fieldset>
+
+          <div id="prog" hidden><progress id="progbar" value="0" max="1"></progress><p class="hint" id="progtxt"></p></div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   Geometry — measured from MagicalAthlete_Card_Template.pdf, in points.
+   Page = bleed size. Trim inset 9pt (3.175mm) on all sides.
+   ===================================================================== */
+const PG = { W:196.583, H:267.449, BLEED:9 };
+const TRIM = { x:PG.BLEED, y:PG.BLEED, w:178.583, h:249.449 };
+/* Frame constants traced from MagicalAthlete_Card_Template.pdf at 1200 dpi.
+   Everything is true concentric offsets sharing one corner centre, so a band's
+   radius = rBase - its inset. The perimeter rings offset the continuous interior
+   outline; the keylines offset the art and bubble windows, and the miter join
+   where the art window's side meets the bubble curve throws the keyline point. */
+const F = {
+  bodyR:8.76,            // die-cut corner of the black card body
+  topLift:0.80,          // bands sit slightly higher than their side inset
+  botDrop:0.19,
+  rBase:18.15,           // corner radius of any band = rBase - its inset
+  art:15.80,             // art window inset from trim (left/right)
+  /* offsets outward from either window edge — the whole frame is built from these */
+  offInk1:0.94, offRing:2.35, offInk2:3.25, offRing2:4.78, offInk3:5.70, offRing1:7.01,
+  bubTop:164.55, bubBot:243.10, bubR:28.5,
+  gap:8.16,              // art window floats this far above the bubble
+  tabRise:8.61, tabKey:0.90, tabPad:5.0, tabFs:5.9, tabTrack:0.35,
+  safe:11.34             // 4mm from trim
+};
+const INK='#1E1C1C', WHITE='#FFFFFF';
+const PALETTE=['#1E1C1C','#FFFFFF','#EF381F','#D71D25','#F8DF05','#F5A623','#288F3E','#7DC242',
+               '#659BD8','#2E5FA3','#A77FC6','#8140A4','#D969BB','#EE2C9F','#B1B0AF','#D5E8C6','#FBE9A0','#8C6239'];
+const MM_PER_PT = 25.4/72;
+const winX=()=>({x0:TRIM.x+F.art, x1:TRIM.x+TRIM.w-F.art});
+
+/* =====================================================================
+   State
+   ===================================================================== */
+const DEFAULT_BACK = { n:24, colors:['#288F3E','#659BD8','#EF381F','#D969BB'], logo:true, logoSize:88, image:null };
+let deck=[], cur=0, back={...DEFAULT_BACK}, clip=null;
+let view='trim', showBack=false, zoom=2.6;
+const artCache = new Map();   // id -> HTMLImageElement
+let backImg = null;
+
+function uid(){ return 'c'+Math.random().toString(36).slice(2,9); }
+function newCard(seed={}){
+  return Object.assign({
+    id:uid(), name:'New Racer',
+    rule:'Describe the power in one or two short sentences.',
+    tab:'POWER NAME',
+    c1:'#288F3E', c2:'#A77FC6', c3:'#F8DF05', c4:'#B1B0AF',
+    titleAlign:'center', tsize:19, tdrop:6, tshadow:false,
+    bsize:7.6, blead:1.30,
+    bgStyle:'solid', bgA:'#659BD8', bgB:'#F8DF05', bgC:'#288F3E', bgN:18,
+    art:null, azoom:100, ax:0, ay:0, aflip:false
+  }, seed);
+}
+function seedDeck(){
+  return [
+    newCard({name:'Legs', rule:'I can skip rolling for my main move and move 5 instead.', tab:'JOG',
+             c1:'#288F3E', c2:'#A77FC6', c3:'#F8DF05', c4:'#B1B0AF',
+             bgStyle:'horizon', bgA:'#A77FC6', bgB:'#B1B0AF', bgC:'#288F3E', bgN:22, titleAlign:'center'}),
+    newCard({name:'Baba Yaga', rule:'Trip any racer that stops on my space, or when I stop on theirs.', tab:'LEG IT',
+             c1:'#659BD8', c2:'#EF381F', c3:'#F8DF05', c4:'#659BD8',
+             bgStyle:'horizon', bgA:'#659BD8', bgB:'#288F3E', bgC:'#F8DF05', bgN:26}),
+    newCard({name:'Dicemonger', rule:'Anyone can reroll their main move once per turn. When another racer does it, I move 1.', tab:'DICEY DEALS',
+             c1:'#EE2C9F', c2:'#F8DF05', c3:'#D71D25', c4:'#A77FC6',
+             bgStyle:'sunburst', bgA:'#F8DF05', bgB:'#EE2C9F', bgC:'#D71D25', bgN:20})
+  ];
+}
+const card = ()=>deck[cur];
+
+/* =====================================================================
+   Canvas helpers
+   ===================================================================== */
+function rr(ctx,x,y,w,h,r){
+  r=Math.max(0,Math.min(r,Math.min(w,h)/2));
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+function fillRR(ctx,b,color){ rr(ctx,b.x,b.y,b.w,b.h,b.r); ctx.fillStyle=color; ctx.fill(); }
+
+/* The interior outline: one continuous shape enclosing both windows — tight corners
+   at the top, the bubble's wide sweep at the bottom. The perimeter rings are offsets
+   of THIS, which is why they never throw a point. */
+function pathInterior(ctx){
+  const {x0,x1}=winX();
+  const yT=TRIM.y+F.art-F.topLift, rT=Math.max(0.5,F.rBase-F.art);
+  const rB=F.bubR, yB=F.bubBot;
+  ctx.beginPath();
+  ctx.moveTo(x0+rT,yT);
+  ctx.lineTo(x1-rT,yT);
+  ctx.arcTo(x1,yT,x1,yT+rT,rT);
+  ctx.lineTo(x1,yB-rB);
+  ctx.arcTo(x1,yB,x1-rB,yB,rB);
+  ctx.lineTo(x0+rB,yB);
+  ctx.arcTo(x0,yB,x0,yB-rB,rB);
+  ctx.lineTo(x0,yT+rT);
+  ctx.arcTo(x0,yT,x0+rT,yT,rT);
+  ctx.closePath();
+}
+/* The bubble: a generously rounded rect (corner radius 28.5pt). */
+function pathBubble(ctx){
+  const {x0,x1}=winX();
+  rr(ctx,x0,F.bubTop,x1-x0,F.bubBot-F.bubTop,F.bubR);
+}
+/* The art window: square-ish top corners, vertical sides, and a bottom edge that
+   is the bubble's top offset outward by `gap`. The sides meet that curve at a
+   sharp corner — that corner is what throws the keyline point. */
+function pathArt(ctx){
+  const {x0,x1}=winX();
+  const yT=TRIM.y+F.art-F.topLift, rT=Math.max(0.5,F.rBase-F.art);
+  const RO=F.bubR+F.gap, cy=F.bubTop+F.bubR;
+  const cxL=x0+F.bubR, cxR=x1-F.bubR;
+  const jy=cy-Math.sqrt(RO*RO-F.bubR*F.bubR);
+  ctx.beginPath();
+  ctx.moveTo(x0+rT,yT);
+  ctx.lineTo(x1-rT,yT);
+  ctx.arcTo(x1,yT,x1,yT+rT,rT);
+  ctx.lineTo(x1,jy);
+  ctx.arc(cxR,cy,RO,Math.atan2(jy-cy,x1-cxR),-Math.PI/2,true);
+  ctx.lineTo(cxL,cy-RO);
+  ctx.arc(cxL,cy,RO,-Math.PI/2,Math.atan2(jy-cy,x0-cxL),true);
+  ctx.lineTo(x0,yT+rT);
+  ctx.arcTo(x0,yT,x0+rT,yT,rT);
+  ctx.closePath();
+}
+/* Concentric bands as centred strokes, widest first, then the fill —
+   the same way the bands are offset in the original artwork. */
+function bandStack(ctx,pathFn,specs){
+  ctx.lineJoin='miter'; ctx.miterLimit=28; ctx.lineCap='butt';
+  for(const sp of specs){
+    pathFn(ctx);
+    ctx.lineWidth=sp.w*2; ctx.strokeStyle=sp.c; ctx.stroke();
+    ctx.fillStyle=sp.c; ctx.fill();
+  }
+}
+
+function dispFont(px,w){ return `${w||900} ${px}px MADisplay, 'Archivo Black', Farro, system-ui, sans-serif`; }
+function bodyFont(px,w){ return `${w||700} ${px}px Farro, system-ui, sans-serif`; }
+
+function wrapLines(ctx,text,maxW){
+  const out=[];
+  text.split(/\n/).forEach(par=>{
+    const words=par.split(/\s+/).filter(Boolean);
+    if(!words.length){ out.push(''); return; }
+    let line=words[0];
+    for(let i=1;i<words.length;i++){
+      const t=line+' '+words[i];
+      if(ctx.measureText(t).width<=maxW) line=t; else { out.push(line); line=words[i]; }
+    }
+    out.push(line);
+  });
+  return out;
+}
+
+/* =====================================================================
+   Background painters (drawn inside the art area, already clipped)
+   ===================================================================== */
+function paintBG(ctx,c,a,v){
+  const {x,y,w,h}=a; v=v||a;
+  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  if(c.bgStyle==='solid'){
+    ctx.fillStyle=c.bgA; ctx.fillRect(x,y,w,h);
+  } else if(c.bgStyle==='horizon'){
+    const t=v.y+v.h*(c.bgN/40);
+    ctx.fillStyle=c.bgA; ctx.fillRect(x,y,w,t-y);
+    ctx.fillStyle=c.bgB; ctx.fillRect(x,t,w,y+h-t);
+    ctx.strokeStyle=INK; ctx.lineWidth=0.7;
+    ctx.beginPath(); ctx.moveTo(x,t); ctx.lineTo(x+w,t); ctx.stroke();
+  } else if(c.bgStyle==='stripes'){
+    ctx.fillStyle=c.bgA; ctx.fillRect(x,y,w,h);
+    const n=Math.max(2,c.bgN), sw=(w+h)/n;
+    ctx.lineCap='butt';
+    for(let i=-1;i<=n+1;i++){
+      const px=x+i*sw;
+      ctx.strokeStyle=c.bgB; ctx.lineWidth=sw*0.5;
+      ctx.beginPath(); ctx.moveTo(px,y); ctx.lineTo(px-h,y+h); ctx.stroke();
+      ctx.strokeStyle=INK; ctx.lineWidth=0.55;
+      ctx.beginPath(); ctx.moveTo(px+sw*0.25,y); ctx.lineTo(px+sw*0.25-h,y+h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px-sw*0.25,y); ctx.lineTo(px-sw*0.25-h,y+h); ctx.stroke();
+    }
+  } else {
+    // sunburst / rays
+    const cx = v.x+v.w*0.5;
+    const cy = c.bgStyle==='rays' ? v.y+v.h*0.16 : v.y+v.h*0.5;
+    const R=Math.hypot(w,h)*1.4, n=Math.max(4,c.bgN), cols=[c.bgA,c.bgB,c.bgC];
+    const step=Math.PI*2/n;
+    for(let i=0;i<n;i++){
+      const a0=i*step-Math.PI/2, a1=(i+1)*step-Math.PI/2;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=cols[i%cols.length]; ctx.fill();
+    }
+    ctx.strokeStyle=INK; ctx.lineWidth=0.55; ctx.lineCap='butt';
+    for(let i=0;i<n;i++){
+      const a=i*step-Math.PI/2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function paintArtImage(ctx,c,a,v){
+  const img=artCache.get(c.id); if(!img||!img.width) return;
+  v=v||a;
+  ctx.save(); ctx.beginPath(); ctx.rect(a.x,a.y,a.w,a.h); ctx.clip();
+  const s=Math.max(v.w/img.width, v.h/img.height)*(c.azoom/100);
+  const dw=img.width*s, dh=img.height*s;
+  const dx=v.x+(v.w-dw)/2 + (c.ax/100)*(v.w/2);
+  const dy=v.y+(v.h-dh)/2 + (c.ay/100)*(v.h/2);
+  if(c.aflip){ ctx.translate(dx+dw,dy); ctx.scale(-1,1); ctx.drawImage(img,0,0,dw,dh); }
+  else ctx.drawImage(img,dx,dy,dw,dh);
+  ctx.restore();
+}
+
+/* =====================================================================
+   FRONT
+   ===================================================================== */
+function drawFront(ctx,c,opt={}){
+  const guides=!!opt.guides;
+  ctx.save();
+  ctx.textBaseline='alphabetic';
+
+  // card body — ink floods the bleed so the die cut never shows white
+  ctx.fillStyle=INK; ctx.fillRect(0,0,PG.W,PG.H);
+
+  // Perimeter rings are offsets of the continuous interior outline, so they sweep
+  // around the bottom corners without throwing points. The middle ring fills the
+  // whole interior and stays visible in the gap between the two windows.
+  bandStack(ctx,pathInterior,[{w:F.offRing1,c:c.c1},{w:F.offInk3,c:INK},{w:F.offRing2,c:c.c2}]);
+  // Art window keylines: these DO miter, which is what makes the keyline point.
+  bandStack(ctx,pathArt,[{w:F.offInk2,c:INK},{w:F.offRing,c:c.c3},{w:F.offInk1,c:INK}]);
+
+  const {x0,x1}=winX();
+  const yT=TRIM.y+F.art-F.topLift;
+  const jy=(F.bubTop+F.bubR)-Math.sqrt(Math.pow(F.bubR+F.gap,2)-F.bubR*F.bubR);
+  const A={x:x0, y:yT, w:x1-x0, h:jy-yT};                 // painted area (runs behind the collar)
+  const V={x:x0, y:yT, w:x1-x0, h:(F.bubTop-F.gap)-yT};   // window the eye actually sees
+  ctx.save(); pathArt(ctx); ctx.clip();
+  paintBG(ctx,c,A,V); paintArtImage(ctx,c,A,V);
+  ctx.restore();
+
+  // title
+  const nm=(c.name||'').trim();
+  if(nm){
+    let size=c.tsize, maxW=V.w-11;
+    ctx.font=dispFont(size);
+    while(ctx.measureText(nm).width>maxW && size>7){ size-=0.4; ctx.font=dispFont(size); }
+    const yy=V.y+c.tdrop+size*0.92;
+    let xx=V.x+V.w/2; ctx.textAlign='center';
+    if(c.titleAlign==='left'){ xx=V.x+6; ctx.textAlign='left'; }
+    if(c.titleAlign==='right'){ xx=V.x+V.w-6; ctx.textAlign='right'; }
+    if(c.tshadow){
+      ctx.lineJoin='round'; ctx.strokeStyle=WHITE; ctx.lineWidth=size*0.16;
+      ctx.strokeText(nm,xx,yy);
+    }
+    ctx.fillStyle=INK; ctx.fillText(nm,xx,yy);
+  }
+
+  // bubble's keylines paint last, so the accent ring wins along the sides
+  bandStack(ctx,pathBubble,[{w:F.offInk2,c:INK},{w:F.offRing,c:c.c4},{w:F.offInk1,c:INK}]);
+  pathBubble(ctx); ctx.fillStyle=WHITE; ctx.fill();
+
+  const W={x:x0, y:F.bubTop, w:x1-x0, h:F.bubBot-F.bubTop};
+  const tabTopY=F.bubBot-0.35-F.tabRise;
+
+  // power text
+  const rule=(c.rule||'').trim();
+  if(rule){
+    let size=c.bsize;
+    const maxW=W.w-19, boxTop=W.y+6, boxBot=tabTopY-3.2;
+    let lines,lh;
+    for(;;){
+      ctx.font=bodyFont(size); lh=size*c.blead;
+      lines=wrapLines(ctx,rule,maxW);
+      if(lines.length*lh<=boxBot-boxTop || size<=4.6) break;
+      size-=0.15;
+    }
+    ctx.font=bodyFont(size);
+    ctx.textAlign='center'; ctx.fillStyle=INK;
+    let y=(boxTop+boxBot)/2 - (lines.length*lh)/2 + size*0.82;
+    lines.forEach(L=>{ ctx.fillText(L,W.x+W.w/2,y); y+=lh; });
+  }
+
+  // power tab — flat top with quarter-circle sweeps that run tangentially into the
+  // accent band below, so the two read as one continuous shape
+  const tabTxt=(c.tab||'').trim().toUpperCase();
+  if(tabTxt){
+    const fs=F.tabFs, tr=F.tabTrack, Rk=F.tabRise, Rf=F.tabRise-F.tabKey;
+    ctx.font=bodyFont(fs);
+    let tw=-tr; for(const ch of tabTxt) tw+=ctx.measureText(ch).width+tr;
+    const yBand=F.bubBot-0.35;
+    const bandBot=F.bubBot+F.offRing;
+    const halfMax=(W.w-2*Rk-5)/2;
+    const half=Math.max(2.5, Math.min(halfMax, tw/2+F.tabPad));
+    const midX=W.x+W.w/2, xL=midX-half, xR=midX+half;
+    const path=(rad)=>{
+      ctx.beginPath();
+      ctx.moveTo(xL-rad, yBand);
+      ctx.arc(xL, yBand, rad, Math.PI, Math.PI*1.5);
+      ctx.lineTo(xR, yBand-rad);
+      ctx.arc(xR, yBand, rad, Math.PI*1.5, Math.PI*2);
+      ctx.lineTo(xR+rad, bandBot);
+      ctx.lineTo(xL-rad, bandBot);
+      ctx.closePath();
+    };
+    ctx.save();                                  // keyline dies into the band, never crosses it
+    ctx.beginPath(); ctx.rect(0,0,PG.W,F.bubBot+F.offInk1); ctx.clip();
+    path(Rk); ctx.fillStyle=INK; ctx.fill();
+    ctx.restore();
+    path(Rf); ctx.fillStyle=c.c4; ctx.fill();
+
+    ctx.fillStyle=INK; ctx.textAlign='left';
+    let x=midX-tw/2;
+    const base=F.bubBot-0.80;
+    for(const ch of tabTxt){ ctx.fillText(ch,x,base); x+=ctx.measureText(ch).width+tr; }
+  }
+
+  if(guides) drawGuides(ctx);
+  ctx.restore();
+}
+
+function drawGuides(ctx){
+  ctx.save();
+  ctx.setLineDash([3,2]); ctx.lineWidth=0.5;
+  ctx.strokeStyle='rgba(0,180,255,.95)';
+  ctx.strokeRect(TRIM.x,TRIM.y,TRIM.w,TRIM.h);
+  ctx.strokeStyle='rgba(255,0,140,.95)';
+  ctx.strokeRect(TRIM.x+F.safe,TRIM.y+F.safe,TRIM.w-2*F.safe,TRIM.h-2*F.safe);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/* =====================================================================
+   BACK
+   ===================================================================== */
+function drawBack(ctx,opt={}){
+  ctx.save();
+  ctx.fillStyle=INK; ctx.fillRect(0,0,PG.W,PG.H);
+  if(backImg && backImg.width){
+    const s=Math.max(PG.W/backImg.width, PG.H/backImg.height);
+    const dw=backImg.width*s, dh=backImg.height*s;
+    ctx.drawImage(backImg,(PG.W-dw)/2,(PG.H-dh)/2,dw,dh);
+  } else {
+    const cx=PG.W/2, cy=PG.H/2, R=Math.hypot(PG.W,PG.H), n=back.n;
+    const step=Math.PI*2/n;
+    for(let i=0;i<n;i++){
+      const a0=i*step-Math.PI/2, a1=(i+1)*step-Math.PI/2;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=back.colors[i%back.colors.length]; ctx.fill();
+    }
+    ctx.strokeStyle=INK; ctx.lineWidth=0.55;
+    for(let i=0;i<n;i++){
+      const a=i*step-Math.PI/2;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+Math.cos(a)*R, cy+Math.sin(a)*R); ctx.stroke();
+    }
+    if(back.logo){
+      const scale=back.logoSize/100;
+      ctx.save(); ctx.translate(cx,cy); ctx.transform(1,0,-0.18,1,0,0);
+      const size=21*scale, gap=size*0.86;
+      ctx.font=dispFont(size); ctx.textAlign='center';
+      ['MAGICAL','ATHLETE'].forEach((t,i)=>{
+        const y=(i===0?-gap*0.12:gap*0.82);
+        ctx.fillStyle=INK; ctx.fillText(t,2.2,y+2.2);
+        ctx.lineJoin='round'; ctx.lineWidth=size*0.09; ctx.strokeStyle=INK;
+        ctx.strokeText(t,0,y);
+        ctx.fillStyle=WHITE; ctx.fillText(t,0,y);
+      });
+      ctx.restore();
+    }
+  }
+  if(opt.guides) drawGuides(ctx);
+  ctx.restore();
+}
+
+/* =====================================================================
+   Render to a canvas at a given scale
+   ===================================================================== */
+function renderTo(canvas,kind,c,{edge='bleed',dpi=null,scale=null,guides=false,round=false,dpr=1}={}){
+  const pxPerPt = (scale!=null ? scale : (dpi/72)) * dpr;
+  const full = edge==='bleed';
+  const wPt=(full?PG.W:TRIM.w), hPt=(full?PG.H:TRIM.h);
+  canvas.width=Math.round(wPt*pxPerPt); canvas.height=Math.round(hPt*pxPerPt);
+  if(dpr!==1){
+    canvas.style.width=(wPt*(scale!=null?scale:dpi/72))+'px';
+    canvas.style.height=(hPt*(scale!=null?scale:dpi/72))+'px';
+  }
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.imageSmoothingEnabled=true;
+  if('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality='high';
+  ctx.save();
+  ctx.scale(pxPerPt,pxPerPt);
+  if(!full) ctx.translate(-TRIM.x,-TRIM.y);
+  if(round && !full){
+    rr(ctx,TRIM.x,TRIM.y,TRIM.w,TRIM.h,F.bodyR); ctx.clip();
+  }
+  if(kind==='back') drawBack(ctx,{guides}); else drawFront(ctx,c,{guides});
+  ctx.restore();
+  return canvas;
+}
+function offscreen(kind,c,opts){ return renderTo(document.createElement('canvas'),kind,c,opts); }
+
+/* =====================================================================
+   UI wiring
+   ===================================================================== */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('on'),2100); }
+
+const DPR=()=>Math.min(3, Math.max(1, window.devicePixelRatio||1));
+function paintStage(){
+  const c=card(); if(!c) return;
+  const edge = view==='trim' ? 'trim' : 'bleed';
+  const d=DPR();
+  renderTo($('#cv'),'front',c,{edge,scale:zoom,guides:view==='guides',dpr:d});
+  $('#cap').textContent = view==='trim'?'Front — trim':view==='bleed'?'Front — with bleed':'Front — guides';
+  $('#backbox').style.display = showBack?'':'none';
+  if(showBack) renderTo($('#cvb'),'back',null,{edge,scale:zoom,guides:view==='guides',dpr:d});
+  const wmm=(edge==='bleed'?PG.W:TRIM.w)*MM_PER_PT;
+  $('#zoomlab').textContent = `${wmm.toFixed(1)} × ${((edge==='bleed'?PG.H:TRIM.h)*MM_PER_PT).toFixed(1)} mm`;
+}
+
+function paintThumbs(){
+  const box=$('#thumbs'); box.innerHTML='';
+  deck.forEach((c,i)=>{
+    const b=document.createElement('button');
+    b.className='thumb'; b.setAttribute('aria-current', i===cur?'true':'false');
+    const cv=document.createElement('canvas');
+    renderTo(cv,'front',c,{edge:'trim',scale:0.78,dpr:DPR()*2});
+    cv.style.width='100%'; cv.style.height='auto';
+    b.appendChild(cv);
+    const nm=document.createElement('div'); nm.className='nm'; nm.textContent=c.name||'Untitled';
+    b.appendChild(nm);
+    b.onclick=()=>{ cur=i; syncForm(); paintAll(); };
+    box.appendChild(b);
+  });
+  $('#deckcount').textContent=`${deck.length} card${deck.length===1?'':'s'}`;
+}
+function paintRingview(){
+  const c=card(); if(!c) return;
+  const v=$('#ringview'), rs=[...v.querySelectorAll('i')];
+  const cols=[c.c1,c.c2,c.c3,c.c4], ins=[7,14,21,28];
+  rs.forEach((el,i)=>{ el.style.background=cols[i]; el.style.inset=ins[i]+'px'; el.style.boxShadow='0 0 0 1.5px '+INK; });
+}
+let thumbT=null;
+function paintAll(){ paintStage(); paintRingview(); clearTimeout(thumbT); thumbT=setTimeout(paintThumbs,140); save(); }
+
+/* ---- form binding ---- */
+const BIND=[['#name','name','text'],['#rule','rule','text'],['#tab','tab','text'],
+  ['#c1','c1','color'],['#c2','c2','color'],['#c3','c3','color'],['#c4','c4','color'],
+  ['#tsize','tsize','num'],['#tdrop','tdrop','num'],['#tshadow','tshadow','bool'],
+  ['#bsize','bsize','num'],['#blead','blead','num'],
+  ['#bgStyle','bgStyle','text'],['#bgA','bgA','color'],['#bgB','bgB','color'],['#bgC','bgC','color'],['#bgN','bgN','num'],
+  ['#azoom','azoom','num'],['#ax','ax','num'],['#ay','ay','num']];
+
+function syncForm(){
+  const c=card(); if(!c) return;
+  BIND.forEach(([sel,key,type])=>{
+    const el=$(sel); if(!el) return;
+    if(type==='bool') el.checked=!!c[key]; else el.value=c[key];
+  });
+  $$('#titleAlign button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.al===c.titleAlign?'true':'false'));
+  $('#artctl').hidden = !c.art;
+  $('#drop').style.display = c.art? 'none':'';
+  readouts();
+}
+function readouts(){
+  const c=card(); if(!c) return;
+  $('#tsv').textContent=c.tsize+'pt'; $('#tdv').textContent=c.tdrop+'pt';
+  $('#bsv').textContent=(+c.bsize).toFixed(1)+'pt'; $('#blv').textContent=(+c.blead).toFixed(2);
+  $('#bgnv').textContent=c.bgStyle==='horizon'?Math.round(c.bgN/40*100)+'%':c.bgN;
+  $('#azv').textContent=c.azoom+'%'; $('#axv').textContent=c.ax; $('#ayv').textContent=c.ay;
+  $('#wkv').textContent=back.n; $('#wlv').textContent=back.logoSize+'%';
+}
+function bindInputs(){
+  BIND.forEach(([sel,key,type])=>{
+    const el=$(sel); if(!el) return;
+    const ev = (el.tagName==='SELECT'||type==='bool'||type==='color') ? 'input' : 'input';
+    el.addEventListener(ev,()=>{
+      const c=card(); if(!c) return;
+      c[key] = type==='bool'?el.checked : type==='num'?parseFloat(el.value) : el.value;
+      readouts(); paintAll();
+    });
+  });
+  $$('#titleAlign button').forEach(b=>b.onclick=()=>{ card().titleAlign=b.dataset.al; syncForm(); paintAll(); });
+
+  // swatches
+  const sw=$('#swatches');
+  PALETTE.forEach(hex=>{
+    const b=document.createElement('button'); b.style.background=hex; b.title=hex;
+    b.onclick=()=>{
+      const target = sw.dataset.target || 'c1';
+      card()[target]=hex; syncForm(); paintAll();
+    };
+    sw.appendChild(b);
+  });
+  ['c1','c2','c3','c4'].forEach(k=>{
+    $('#'+k).addEventListener('focus',()=>{ sw.dataset.target=k; });
+  });
+  sw.dataset.target='c1';
+
+  $('#randomFrame').onclick=()=>{
+    const c=card(), pick=()=>PALETTE[2+Math.floor(Math.random()*(PALETTE.length-2))];
+    c.c1=pick(); c.c2=pick(); c.c3=pick(); c.c4=pick();
+    syncForm(); paintAll();
+  };
+  $('#copyFrame').onclick=()=>{ const c=card(); clip={c1:c.c1,c2:c.c2,c3:c.c3,c4:c.c4}; toast('Frame colors copied'); };
+  $('#pasteFrame').onclick=()=>{ if(!clip) return toast('Copy a frame first'); Object.assign(card(),clip); syncForm(); paintAll(); };
+
+  // deck buttons
+  $('#addCard').onclick=()=>{ deck.push(newCard()); cur=deck.length-1; syncForm(); paintAll(); paintThumbs(); };
+  $('#dupCard').onclick=()=>{
+    const c=card(); if(!c) return;
+    const copy=Object.assign({},c,{id:uid(),name:c.name+' copy'});
+    if(artCache.has(c.id)) { artCache.set(copy.id, artCache.get(c.id)); storeArt(copy.id, c.art); }
+    deck.splice(cur+1,0,copy); cur++; syncForm(); paintAll(); paintThumbs();
+  };
+  $('#delCard').onclick=()=>{
+    if(deck.length===1){ deck=[newCard()]; cur=0; }
+    else { deck.splice(cur,1); cur=Math.max(0,cur-1); }
+    syncForm(); paintAll(); paintThumbs();
+  };
+
+  // view
+  $$('.seg [data-view]').forEach(b=>b.onclick=()=>{
+    view=b.dataset.view;
+    $$('.seg [data-view]').forEach(x=>x.setAttribute('aria-pressed', x===b?'true':'false'));
+    paintStage();
+  });
+  $('#showBack').onchange=e=>{ showBack=e.target.checked; paintStage(); };
+  $('#zoom').oninput=e=>{ zoom=parseFloat(e.target.value); paintStage(); };
+
+  // tabs
+  $$('.tabs button').forEach(b=>b.onclick=()=>{
+    $$('.tabs button').forEach(x=>x.setAttribute('aria-selected', x===b?'true':'false'));
+    $$('[data-panel]').forEach(p=>p.hidden = p.dataset.panel!==b.dataset.tab);
+    if(b.dataset.tab==='export') layoutInfo();
+  });
+
+  // art image
+  const drop=$('#drop');
+  ;['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('hot');}));
+  ;['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('hot');}));
+  drop.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) loadArt(f); });
+  $('#file').onchange=e=>{ const f=e.target.files[0]; if(f) loadArt(f); };
+  $('#artFlip').onclick=()=>{ card().aflip=!card().aflip; paintAll(); };
+  $('#artFit').onclick=()=>{ Object.assign(card(),{azoom:100,ax:0,ay:0}); syncForm(); paintAll(); };
+  $('#artClear').onclick=()=>{ const c=card(); c.art=null; artCache.delete(c.id); delArt(c.id); syncForm(); paintAll(); };
+
+  // back panel
+  $('#bkN').oninput=e=>{ back.n=parseInt(e.target.value); readouts(); paintStage(); saveBack(); };
+  $('#bkLogo').onchange=e=>{ back.logo=e.target.checked; paintStage(); saveBack(); };
+  $('#bkLogoSize').oninput=e=>{ back.logoSize=parseInt(e.target.value); readouts(); paintStage(); saveBack(); };
+  $('#bkColors').onclick=()=>{
+    const pool=['#288F3E','#659BD8','#EF381F','#D969BB','#F8DF05','#A77FC6','#EE2C9F','#7DC242','#2E5FA3'];
+    back.colors=[...pool].sort(()=>Math.random()-0.5).slice(0,4); paintStage(); saveBack();
+  };
+  $('#bkReset').onclick=()=>{ back={...DEFAULT_BACK, image:back.image}; $('#bkN').value=back.n; $('#bkLogo').checked=true; $('#bkLogoSize').value=back.logoSize; readouts(); paintStage(); saveBack(); };
+  const dropB=$('#dropB');
+  ;['dragenter','dragover'].forEach(t=>dropB.addEventListener(t,e=>{e.preventDefault();dropB.classList.add('hot');}));
+  ;['dragleave','drop'].forEach(t=>dropB.addEventListener(t,e=>{e.preventDefault();dropB.classList.remove('hot');}));
+  dropB.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) loadBack(f); });
+  $('#fileB').onchange=e=>{ const f=e.target.files[0]; if(f) loadBack(f); };
+  $('#clearB').onclick=()=>{ back.image=null; backImg=null; saveBack(); paintStage(); toast('Back is vector again'); };
+
+  // exports
+  $('#expOne').onclick=exportOnePNG;
+  $('#expAll').onclick=exportAllPNG;
+  $('#expSheets').onclick=exportSheets;
+  $('#expSingles').onclick=exportSingles;
+  $('#expJson').onclick=exportJSON;
+  $('#impJson').onchange=e=>{ const f=e.target.files[0]; if(f) importJSON(f); };
+  ;['#pPaper','#pEdge','#pSides','#pCopies'].forEach(s=>$(s).addEventListener('input',layoutInfo));
+}
+
+/* ---- image loading (downscaled + re-encoded so it fits storage) ---- */
+function fileToDataURL(file,maxPx=2200){
+  return new Promise((res,rej)=>{
+    const fr=new FileReader();
+    fr.onload=()=>{
+      const im=new Image();
+      im.onload=()=>{
+        const s=Math.min(1,maxPx/Math.max(im.width,im.height));
+        if(s>=1 && fr.result.length<3.6e6) return res(fr.result);
+        const cv=document.createElement('canvas');
+        cv.width=Math.round(im.width*s); cv.height=Math.round(im.height*s);
+        cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+        const hasAlpha = /^data:image\/(png|webp)/i.test(fr.result);
+        res(cv.toDataURL(hasAlpha?'image/png':'image/jpeg', 0.92));
+      };
+      im.onerror=()=>rej(new Error('That file could not be read as an image'));
+      im.src=fr.result;
+    };
+    fr.onerror=()=>rej(new Error('That file could not be read'));
+    fr.readAsDataURL(file);
+  });
+}
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+async function loadArt(file){
+  try{
+    const url=await fileToDataURL(file);
+    const c=card(); c.art=url;
+    artCache.set(c.id, await loadImg(url));
+    storeArt(c.id,url); syncForm(); paintAll(); toast('Illustration placed');
+  }catch(err){ toast(err.message||'Image failed to load'); }
+}
+async function loadBack(file){
+  try{
+    const url=await fileToDataURL(file,2600);
+    back.image=url; backImg=await loadImg(url); saveBack(); paintStage(); toast('Custom back placed');
+  }catch(err){ toast(err.message||'Image failed to load'); }
+}
+
+/* =====================================================================
+   Persistence (window.storage)
+   ===================================================================== */
+const S = (typeof window!=='undefined' && window.storage) ? window.storage : null;
+let saveT=null;
+function stripped(){ return deck.map(c=>{ const o={...c}; delete o.art; return o; }); }
+function save(){
+  if(!S) return;
+  clearTimeout(saveT);
+  saveT=setTimeout(async()=>{
+    try{ await S.set('ma:deck', JSON.stringify({cards:stripped(), cur})); }catch(e){}
+  },700);
+}
+async function saveBack(){ if(!S) return; try{ await S.set('ma:back', JSON.stringify(back)); }catch(e){} }
+async function storeArt(id,url){ if(!S) return; try{ await S.set('ma:art:'+id, url); }catch(e){ toast('Image is too large to remember between visits'); } }
+async function delArt(id){ if(!S) return; try{ await S.delete('ma:art:'+id); }catch(e){} }
+
+async function boot(){
+  let loaded=false;
+  if(S){
+    try{
+      const r=await S.get('ma:deck');
+      if(r&&r.value){ const d=JSON.parse(r.value); if(d.cards&&d.cards.length){ deck=d.cards.map(c=>newCard(c)); cur=Math.min(d.cur||0,deck.length-1); loaded=true; } }
+    }catch(e){}
+    try{ const r=await S.get('ma:back'); if(r&&r.value) back=Object.assign({...DEFAULT_BACK},JSON.parse(r.value)); }catch(e){}
+  }
+  if(!loaded) deck=seedDeck();
+
+  bindInputs();
+  $('#bkN').value=back.n; $('#bkLogo').checked=back.logo; $('#bkLogoSize').value=back.logoSize;
+  syncForm();
+
+  try{ await document.fonts.ready; }catch(e){}
+  paintStage(); paintThumbs(); paintRingview(); layoutInfo();
+  if(document.fonts && document.fonts.addEventListener){
+    document.fonts.addEventListener('loadingdone',()=>{ paintStage(); paintThumbs(); });
+  }
+
+  // rehydrate images after first paint
+  if(S){
+    if(back.image){ try{ backImg=await loadImg(back.image); }catch(e){} }
+    for(const c of deck){
+      try{ const r=await S.get('ma:art:'+c.id); if(r&&r.value){ c.art=r.value; artCache.set(c.id, await loadImg(r.value)); } }catch(e){}
+    }
+    syncForm(); paintStage(); paintThumbs();
+  }
+}
+
+/* =====================================================================
+   Export helpers
+   ===================================================================== */
+function dl(blob,filename){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function slug(s){ return (s||'card').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'card'; }
+function canvasBlob(cv,type='image/png'){ return new Promise(r=>cv.toBlob(r,type)); }
+function progress(on,txt,v){ $('#prog').hidden=!on; if(txt!=null) $('#progtxt').textContent=txt; if(v!=null) $('#progbar').value=v; }
+
+async function exportOnePNG(){
+  const c=card(), dpi=+$('#fDpi').value, edge=$('#fEdge').value, round=$('#fTransparentCorners').checked;
+  const cv=offscreen('front',c,{edge,dpi,round});
+  dl(await canvasBlob(cv), `${slug(c.name)}-front-${edge}-${dpi}dpi.png`);
+  toast(`Exported ${cv.width} × ${cv.height} px`);
+}
+async function exportAllPNG(){
+  const dpi=+$('#fDpi').value, edge=$('#fEdge').value, round=$('#fTransparentCorners').checked;
+  progress(true,'Rendering fronts…',0);
+  const files=[];
+  for(let i=0;i<deck.length;i++){
+    const cv=offscreen('front',deck[i],{edge,dpi,round});
+    files.push([`${String(i+1).padStart(2,'0')}-${slug(deck[i].name)}.png`, await canvasBlob(cv)]);
+    progress(true,`Rendering fronts… ${i+1} of ${deck.length}`,(i+1)/deck.length);
+    await new Promise(r=>setTimeout(r));
+  }
+  if(window.JSZip){
+    const zip=new JSZip();
+    for(const [n,b] of files) zip.file(n,b);
+    const blob=await zip.generateAsync({type:'blob'});
+    dl(blob,'magical-athlete-fronts.zip');
+    toast(`${files.length} PNGs zipped`);
+  }else{
+    for(const [n,b] of files){ dl(b,n); await new Promise(r=>setTimeout(r,450)); }
+    toast('Fronts downloaded one by one');
+  }
+  progress(false);
+}
+
+const PAPER={ letter:{w:215.9,h:279.4,name:'letter'}, a4:{w:210,h:297,name:'a4'}, tabloid:{w:279.4,h:431.8,name:'tabloid'} };
+function planSheet(){
+  const paper=PAPER[$('#pPaper').value];
+  const withBleed=$('#pEdge').value==='bleed';
+  const cw=(withBleed?PG.W:TRIM.w)*MM_PER_PT, ch=(withBleed?PG.H:TRIM.h)*MM_PER_PT;
+  const margin=withBleed?3:6, gutter=0;
+  const cols=Math.max(1,Math.floor((paper.w-2*margin+gutter)/(cw+gutter)));
+  const rows=Math.max(1,Math.floor((paper.h-2*margin+gutter)/(ch+gutter)));
+  const gridW=cols*cw+(cols-1)*gutter, gridH=rows*ch+(rows-1)*gutter;
+  return {paper,withBleed,cw,ch,cols,rows,gutter,
+    ox:(paper.w-gridW)/2, oy:(paper.h-gridH)/2, per:cols*rows};
+}
+function layoutInfo(){
+  const p=planSheet();
+  const copies=Math.max(1,parseInt($('#pCopies').value)||1);
+  const total=deck.length*copies;
+  const pages=Math.ceil(total/p.per);
+  const sides=$('#pSides').value;
+  const sheets = sides==='fronts'?pages : pages*2;
+  let msg = `${p.cols} × ${p.rows} = ${p.per} cards per page → ${total} cards on ${pages} page${pages===1?'':'s'} of fronts, ${sheets} sheet${sheets===1?'':'s'} total.`;
+  if(+$('#pDpi').value>=600 && deck.length>16) msg += ' 600 DPI on a deck this size makes a very large file — 400 is plenty for home printing.';
+  $('#layoutInfo').textContent = msg;
+}
+
+function cropMarks(pdf,x,y,w,h,bleedMM){
+  const L=3.2, o=0.6;
+  pdf.setDrawColor(0); pdf.setLineWidth(0.12);
+  const tx=x+bleedMM, ty=y+bleedMM, tw=w-2*bleedMM, th=h-2*bleedMM;
+  [[tx,ty],[tx+tw,ty],[tx,ty+th],[tx+tw,ty+th]].forEach(([px,py],i)=>{
+    const sx=(i%2===0)?-1:1, sy=(i<2)?-1:1;
+    pdf.line(px+sx*o, py, px+sx*(o+L), py);
+    pdf.line(px, py+sy*o, px, py+sy*(o+L));
+  });
+}
+
+async function buildPages(){
+  const p=planSheet();
+  const dpi=+$('#pDpi').value, sides=$('#pSides').value;
+  const copies=Math.max(1,parseInt($('#pCopies').value)||1);
+  const edge=p.withBleed?'bleed':'trim';
+  let seq=[]; for(let k=0;k<copies;k++) seq=seq.concat(deck.map((c,i)=>({c,i})));
+  const pages=[]; for(let i=0;i<seq.length;i+=p.per) pages.push(seq.slice(i,i+p.per));
+
+  // pre-render images once per unique card
+  progress(true,'Rendering cards…',0);
+  const fronts=new Map();
+  for(let i=0;i<deck.length;i++){
+    fronts.set(deck[i].id, offscreen('front',deck[i],{edge,dpi}).toDataURL('image/png'));
+    progress(true,`Rendering cards… ${i+1} of ${deck.length}`,(i+1)/(deck.length+1));
+    await new Promise(r=>setTimeout(r));
+  }
+  const backURL = sides==='fronts'?null:offscreen('back',null,{edge,dpi}).toDataURL('image/png');
+  progress(true,'Assembling PDF…',1);
+  return {p,pages,fronts,backURL,sides};
+}
+
+async function exportSheets(){
+  if(!window.jspdf){ toast('PDF library did not load — check the connection'); return; }
+  const {p,pages,fronts,backURL,sides}=await buildPages();
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:'mm', format:[p.paper.w,p.paper.h], orientation:'portrait', compress:true});
+  const bleedMM=p.withBleed?PG.BLEED*MM_PER_PT:0;
+  const cellPos=(idx)=>{
+    const r=Math.floor(idx/p.cols), c=idx%p.cols;
+    return [p.ox+c*(p.cw+p.gutter), p.oy+r*(p.ch+p.gutter)];
+  };
+  const mirrorIdx=(idx)=>{
+    const r=Math.floor(idx/p.cols), c=idx%p.cols;
+    return $('#pSides').value==='duplex-short'
+      ? (p.rows-1-r)*p.cols + c
+      : r*p.cols + (p.cols-1-c);
+  };
+  let first=true;
+  const addPage=()=>{ if(first) first=false; else pdf.addPage([p.paper.w,p.paper.h],'portrait'); };
+
+  const drawFrontPage=(page)=>{
+    addPage();
+    page.forEach((it,idx)=>{
+      const [x,y]=cellPos(idx);
+      pdf.addImage(fronts.get(it.c.id),'PNG',x,y,p.cw,p.ch,undefined,'FAST');
+      if(p.withBleed) cropMarks(pdf,x,y,p.cw,p.ch,bleedMM);
+    });
+    if(!p.withBleed){
+      pdf.setDrawColor(150); pdf.setLineWidth(0.1);
+      for(let c=0;c<=p.cols;c++) pdf.line(p.ox+c*p.cw,p.oy-3,p.ox+c*p.cw,p.oy+p.rows*p.ch+3);
+      for(let r=0;r<=p.rows;r++) pdf.line(p.ox-3,p.oy+r*p.ch,p.ox+p.cols*p.cw+3,p.oy+r*p.ch);
+    }
+  };
+  const drawBackPage=(page)=>{
+    addPage();
+    page.forEach((it,idx)=>{
+      const [x,y]=cellPos(mirrorIdx(idx));
+      pdf.addImage(backURL,'PNG',x,y,p.cw,p.ch,undefined,'FAST');
+      if(p.withBleed) cropMarks(pdf,x,y,p.cw,p.ch,bleedMM);
+    });
+  };
+
+  if(sides==='fronts'){ pages.forEach(drawFrontPage); }
+  else if(sides==='separate'){ pages.forEach(drawFrontPage); pages.forEach(drawBackPage); }
+  else { pages.forEach(pg=>{ drawFrontPage(pg); drawBackPage(pg); }); }
+
+  const label = sides==='fronts'?'fronts':'duplex';
+  pdf.save(`magical-athlete-${p.paper.name}-${label}-${p.withBleed?'bleed':'trim'}.pdf`);
+  progress(false); toast('Print PDF built');
+}
+
+async function exportSingles(){
+  if(!window.jspdf){ toast('PDF library did not load — check the connection'); return; }
+  const dpi=+$('#pDpi').value;
+  const w=PG.W*MM_PER_PT, h=PG.H*MM_PER_PT;
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF({unit:'mm', format:[w,h], orientation:'portrait', compress:true});
+  progress(true,'Rendering cards…',0);
+  const wantBacks = $('#pSides').value!=='fronts';
+  const backURL = wantBacks ? offscreen('back',null,{edge:'bleed',dpi}).toDataURL('image/png') : null;
+  for(let i=0;i<deck.length;i++){
+    if(i) pdf.addPage([w,h],'portrait');
+    pdf.addImage(offscreen('front',deck[i],{edge:'bleed',dpi}).toDataURL('image/png'),'PNG',0,0,w,h,undefined,'FAST');
+    if(wantBacks){ pdf.addPage([w,h],'portrait'); pdf.addImage(backURL,'PNG',0,0,w,h,undefined,'FAST'); }
+    progress(true,`Rendering cards… ${i+1} of ${deck.length}`,(i+1)/deck.length);
+    await new Promise(r=>setTimeout(r));
+  }
+  pdf.save('magical-athlete-single-cards-bleed.pdf');
+  progress(false); toast('Single-card PDF built');
+}
+
+function exportJSON(){
+  const data={format:'magical-athlete-deck', version:1, spec:{trim_mm:[63,88], bleed_mm:3.175}, back, cards:deck};
+  dl(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),'magical-athlete-deck.json');
+}
+async function importJSON(file){
+  try{
+    const d=JSON.parse(await file.text());
+    if(!d.cards||!d.cards.length) throw new Error('No cards in that file');
+    deck=d.cards.map(c=>newCard(c)); cur=0;
+    if(d.back) back=Object.assign({...DEFAULT_BACK},d.back);
+    artCache.clear(); backImg=null;
+    for(const c of deck){ if(c.art){ try{ artCache.set(c.id, await loadImg(c.art)); storeArt(c.id,c.art); }catch(e){} } }
+    if(back.image){ try{ backImg=await loadImg(back.image); }catch(e){} }
+    $('#bkN').value=back.n; $('#bkLogo').checked=back.logo; $('#bkLogoSize').value=back.logoSize;
+    syncForm(); paintAll(); paintThumbs(); saveBack(); toast(`Loaded ${deck.length} cards`);
+  }catch(err){ toast(err.message||'That deck file could not be read'); }
+}
+
+boot();
+</script>
