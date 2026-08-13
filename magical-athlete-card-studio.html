@@ -443,9 +443,9 @@ const card = ()=>deck[cur];
 /* =====================================================================
    Canvas helpers
    ===================================================================== */
-function rr(ctx,x,y,w,h,r){
+function rr(ctx,x,y,w,h,r,cont){
   r=Math.max(0,Math.min(r,Math.min(w,h)/2));
-  ctx.beginPath();
+  if(!cont) ctx.beginPath();
   ctx.moveTo(x+r,y);
   ctx.arcTo(x+w,y,x+w,y+h,r);
   ctx.arcTo(x+w,y+h,x,y+h,r);
@@ -475,20 +475,20 @@ function pathInterior(ctx){
   ctx.closePath();
 }
 /* The bubble: a generously rounded rect (corner radius 28.5pt). */
-function pathBubble(ctx){
+function pathBubble(ctx,cont){
   const {x0,x1}=winX();
-  rr(ctx,x0,F.bubTop,x1-x0,F.bubBot-F.bubTop,F.bubR);
+  rr(ctx,x0,F.bubTop,x1-x0,F.bubBot-F.bubTop,F.bubR,cont);
 }
 /* The art window: square-ish top corners, vertical sides, and a bottom edge that
    is the bubble's top offset outward by `gap`. The sides meet that curve at a
    sharp corner — that corner is what throws the keyline point. */
-function pathArt(ctx){
+function pathArt(ctx,cont){
   const {x0,x1}=winX();
   const yT=TRIM.y+F.art-F.topLift, rT=Math.max(0.5,F.rBase-F.art);
   const RO=F.bubR+F.gap, cy=F.bubTop+F.bubR;
   const cxL=x0+F.bubR, cxR=x1-F.bubR;
   const jy=cy-Math.sqrt(RO*RO-F.bubR*F.bubR);
-  ctx.beginPath();
+  if(!cont) ctx.beginPath();
   ctx.moveTo(x0+rT,yT);
   ctx.lineTo(x1-rT,yT);
   ctx.arcTo(x1,yT,x1,yT+rT,rT);
@@ -499,6 +499,14 @@ function pathArt(ctx){
   ctx.lineTo(x0,yT+rT);
   ctx.arcTo(x0,yT,x0+rT,yT,rT);
   ctx.closePath();
+}
+/* Clip to everything OUTSIDE a window path, so a keyline can be re-laid over the
+   artwork's antialiased edge without creeping inward over the art. */
+function clipOutside(ctx,pathFn){
+  ctx.beginPath();
+  ctx.rect(0,0,PG.W,PG.H);
+  pathFn(ctx,true);
+  ctx.clip('evenodd');
 }
 /* Concentric bands as centred strokes, widest first, then the fill —
    the same way the bands are offset in the original artwork. */
@@ -617,6 +625,16 @@ function drawFront(ctx,c,opt={}){
   paintBG(ctx,c,A,V); paintArtImage(ctx,c,A,V);
   ctx.restore();
 
+  // The artwork is clipped to the window edge, which is also the keyline's inner
+  // edge, so its antialiased fringe would tint the line. Re-lay the keyline
+  // clipped to the outside: hard inner edge, artwork sits under it.
+  ctx.save();
+  clipOutside(ctx,pathArt);
+  pathArt(ctx);
+  ctx.lineJoin='miter'; ctx.miterLimit=28; ctx.lineCap='butt';
+  ctx.lineWidth=F.offInk1*2; ctx.strokeStyle=INK; ctx.stroke();
+  ctx.restore();
+
   // title
   const nm=(c.name||'').trim();
   if(nm){
@@ -637,6 +655,12 @@ function drawFront(ctx,c,opt={}){
   // bubble's keylines paint last, so the accent ring wins along the sides
   bandStack(ctx,pathBubble,[{w:F.offInk2,c:INK},{w:F.offRing,c:c.c4},{w:F.offInk1,c:INK}]);
   pathBubble(ctx); ctx.fillStyle=WHITE; ctx.fill();
+  ctx.save();
+  clipOutside(ctx,pathBubble);
+  pathBubble(ctx);
+  ctx.lineJoin='miter'; ctx.lineCap='butt';
+  ctx.lineWidth=F.offInk1*2; ctx.strokeStyle=INK; ctx.stroke();
+  ctx.restore();
 
   const W={x:x0, y:F.bubTop, w:x1-x0, h:F.bubBot-F.bubTop};
   const tabTopY=F.bubBot-0.35-F.tabRise;
