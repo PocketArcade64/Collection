@@ -272,14 +272,15 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:#e3ebf4;paddin
           </select>
         </div>
         <div class="field">
-          <label class="lbl" for="tickMul">Tick multiplier</label>
-          <select id="tickMul">
-            <option value="0">auto</option><option value="1">1&times;</option>
-            <option value="2">2&times;</option><option value="4">4&times;</option>
+          <label class="lbl" for="tickGrid">Ticks per quarter</label>
+          <select id="tickGrid">
+            <option value="0">auto</option><option value="12">12</option>
+            <option value="24">24</option><option value="48">48 (native)</option>
+            <option value="96">96</option><option value="192">192</option>
           </select>
         </div>
       </div>
-      <p class="hint">A quarter note is always 48 ticks and tempo caps at 240 BPM. Auto multiplies every tick value and divides BPM by the same power of two, so fast MIDI files stay in range and timing is unchanged.</p>
+      <p class="hint">The tempo value the player stores is <b>BPM &times; ticks-per-quarter &divide; 48</b>, and it cannot exceed 240. So a finer grid buys timing resolution at the cost of tempo headroom, and fast music needs a coarser one. Auto picks the finest grid that still fits.</p>
       <div class="row" style="margin-top:14px">
         <div class="field">
           <label class="lbl" for="poly">Polyphony cap</label>
@@ -366,8 +367,37 @@ footer.note code{font-family:"IBM Plex Mono",monospace;background:#e3ebf4;paddin
   <pre class="disasm" id="disasm"></pre>
 </section>
 
+<!-- ===== audio export ===== -->
+<section class="panel hidden" id="audioPanel">
+  <h2>7 &middot; Audio export</h2>
+  <p class="hint" style="margin-top:-4px;margin-bottom:14px">This renders by <b>executing the SSEQ bytes above</b>, not the intermediate note list, so what you hear is what the file says. It needs the archive loaded, because the sound is in the SWAR samples: without them there is nothing to play. Envelopes, the PSG channels and the hardware's mix truncation are approximated, so treat this as a check on arrangement, timing and instrument choice rather than a faithful capture of the console.</p>
+  <div class="row">
+    <div class="field">
+      <label class="lbl" for="renderLen">Max length (s)</label>
+      <input type="number" id="renderLen" min="5" max="600" value="120">
+    </div>
+    <div class="field">
+      <label class="lbl" for="renderLoops">Loop repeats</label>
+      <input type="number" id="renderLoops" min="0" max="8" value="1">
+    </div>
+    <div class="field">
+      <label class="lbl" for="renderRate">Sample rate</label>
+      <select id="renderRate"><option value="44100">44100</option><option value="48000">48000</option><option value="32000">32000</option></select>
+    </div>
+    <div class="field">
+      <label class="lbl" for="renderKbps">MP3 bitrate</label>
+      <select id="renderKbps"><option value="192">192 kbps</option><option value="320">320 kbps</option><option value="128">128 kbps</option></select>
+    </div>
+    <button class="primary" id="renderBtn">Render audio</button>
+    <button id="dlMp3" disabled>Save .mp3</button>
+    <button id="dlWav" disabled>Save .wav</button>
+  </div>
+  <div id="renderStatus" class="fileline hidden"></div>
+  <audio id="player" controls class="hidden" style="width:100%;margin-top:14px"></audio>
+</section>
+
 <footer class="note">
-  Built against the Nitro Composer sequence command table. Notes carry their own duration, so there are no note-off events; time advances only through <code>0x80</code> waits, with note-wait switched off at the top of every track so chords stack. Track offsets in <code>0x93</code> and <code>0x94</code> are 24-bit and relative to the start of the sequence data, which is why the writer resolves labels in a second pass.
+  Audio export executes the emitted bytes through an approximate software synth, so it catches wrong notes, wrong instruments and wrong timing, but not exact timbre. Built against the Nitro Composer sequence command table. Notes carry their own duration, so there are no note-off events; time advances only through <code>0x80</code> waits, with note-wait switched off at the top of every track so chords stack. Track offsets in <code>0x93</code> and <code>0x94</code> are 24-bit and relative to the start of the sequence data, which is why the writer resolves labels in a second pass.
 </footer>
 
 </div>
@@ -509,18 +539,24 @@ function buildSseq(midi, cfg, report){
   tempos = tempos.filter((t,i) => i === 0 || Math.abs(t.bpm - tempos[i-1].bpm) > 0.01 || t.tick !== tempos[i-1].tick);
   if(!tempos.length || tempos[0].tick > 0) tempos.unshift({tick:0, bpm:120});
 
-  /* ---- tick multiplier keeps BPM inside the player's range ---- */
+  /* ---- grid choice ----
+     The player consumes a tick each time an accumulator fed by `tempo` crosses 240,
+     so ticks/sec = tempo / 1.2503 and therefore tempo = BPM * tpqn / 48.
+     A finer grid costs tempo headroom: fast music needs FEWER ticks per quarter. */
   let maxBpm = 0, minBpm = Infinity;
   for(const t of tempos){ if(t.bpm > maxBpm) maxBpm = t.bpm; if(t.bpm < minBpm) minBpm = t.bpm; }
-  let mul = cfg.tickMul;
-  if(!mul){ mul = 1; while(maxBpm / mul > MAX_BPM && mul < 8) mul *= 2; }
-  if(maxBpm / mul > MAX_BPM)
-    report.warn(`Fastest tempo is ${maxBpm.toFixed(1)} BPM; even at ${mul}x it exceeds the 240 BPM ceiling and will play slow.`);
-  if(minBpm / mul < 1)
-    report.warn(`Slowest tempo becomes under 1 BPM at ${mul}x. Force a smaller tick multiplier.`);
-  if(mul > 1) report.info(`Tick multiplier ${mul}x: ${BASE_TPQN * mul} ticks per quarter, tempo divided by ${mul}. Real timing is unchanged.`);
+  let scale = cfg.tickScale;
+  if(!scale){ scale = 4; while(scale > 0.25 && maxBpm * scale > MAX_BPM) scale /= 2; }
+  const tpqn = Math.max(1, Math.round(BASE_TPQN * scale));
+  const tempoVal = bpm => Math.round(bpm * tpqn / BASE_TPQN);
 
-  const tpqn = BASE_TPQN * mul;
+  if(tempoVal(maxBpm) > MAX_BPM)
+    report.warn(`Fastest tempo needs a tempo value of ${tempoVal(maxBpm)}, over the 240 ceiling. Choose a coarser grid than ${tpqn} ticks per quarter.`);
+  if(tempoVal(minBpm) < 1)
+    report.warn(`Slowest tempo rounds to a tempo value under 1 at ${tpqn} ticks per quarter. Choose a finer grid.`);
+  if(tpqn !== BASE_TPQN)
+    report.info(`Grid is ${tpqn} ticks per quarter, so tempo values are ${(tpqn/BASE_TPQN).toFixed(2)}x the BPM. Real timing is unchanged.`);
+
   const toTick = mt => Math.round(mt * tpqn / midi.ppqn);
 
   /* ---- time signature, for rounding the loop end ---- */
@@ -657,7 +693,7 @@ function buildSseq(midi, cfg, report){
       }
     }
     if(gi === 0) for(const tp of tempos)
-      g.timed.push({t:toTick(tp.tick), p:PRI.tempo, kind:"tempo", v:Math.max(1, Math.min(MAX_BPM, Math.round(tp.bpm / mul)))});
+      g.timed.push({t:toTick(tp.tick), p:PRI.tempo, kind:"tempo", v:Math.max(1, Math.min(MAX_BPM, tempoVal(tp.bpm)))});
     g.timed.sort((a,b) => a.t - b.t || a.p - b.p);
     for(const e of g.timed) if(e.t > endTick) endTick = e.t;
   });
@@ -701,7 +737,7 @@ function buildSseq(midi, cfg, report){
   });
 
   const seq = a.resolve();
-  return {seq, tracks:list, cut, endTick, loopTick, tpqn, mul, barTicks, tempos, unclosed, stolen};
+  return {seq, tracks:list, cut, endTick, loopTick, tpqn, scale, barTicks, tempos, unclosed, stolen};
 }
 
 /* ---- wrap sequence bytes in the SSEQ container ---- */
@@ -837,6 +873,9 @@ function parseSdat(buf){
     fileId:dv.getUint16(o, true),
     waves:[0,1,2,3].map(w => dv.getUint16(o + 2 + w*2, true))
   } : null).filter(Boolean);
+  const waveArcs = infoList(3).map((o, i) => o ? {
+    index:i, name:names.wavearc[i] || "WAVE_" + i, fileId:dv.getUint16(o, true)
+  } : null);
 
   /* file allocation table */
   const F = blk.fat.off, fatCount = dv.getUint32(F + 8, true), fat = [];
@@ -844,22 +883,55 @@ function parseSdat(buf){
     const r = F + 12 + i*16;
     fat.push({rec:r, off:dv.getUint32(r, true), size:dv.getUint32(r + 4, true)});
   }
-  return {buf, u8, dv, blk, seqs, banks, fat, names};
+  return {buf, u8, dv, blk, seqs, banks, waveArcs, fat, names};
 }
 
 function parseSbnk(u8, off, size){
   /* header 0x10 + DATA magic/size 0x08 + 32 reserved + u32 count = 0x3C */
   if(size < 0x40 || off + size > u8.length) return null;
+  if(String.fromCharCode(u8[off],u8[off+1],u8[off+2],u8[off+3]) !== "SBNK") return null;
   const dv = new DataView(u8.buffer, u8.byteOffset + off, size);
-  const tag = String.fromCharCode(u8[off],u8[off+1],u8[off+2],u8[off+3]);
-  if(tag !== "SBNK") return null;
   const count = dv.getUint32(0x38, true);
+  if(count > 4096) return null;
   const TYPE = {0:"empty", 1:"PCM", 2:"PSG square", 3:"PSG noise", 4:"direct PCM", 5:"null",
                 16:"drum set", 17:"key split"};
+
+  /* a note definition is 10 bytes: swav, swar, base note, A, D, S, R, pan */
+  const noteDef = (o, type) => (o + 10 <= size) ? {
+    type, wave:dv.getUint16(o, true), arc:dv.getUint16(o + 2, true),
+    base:dv.getUint8(o + 4), a:dv.getUint8(o + 5), d:dv.getUint8(o + 6),
+    s:dv.getUint8(o + 7), r:dv.getUint8(o + 8), pan:dv.getUint8(o + 9)
+  } : null;
+
   const insts = [];
   for(let i = 0; i < count && 0x3C + i*4 + 4 <= size; i++){
     const t = dv.getUint8(0x3C + i*4);
-    insts.push({i, type:t, label:TYPE[t] || "type " + t});
+    const o = dv.getUint16(0x3C + i*4 + 1, true);
+    const rec = {i, type:t, label:TYPE[t] || "type " + t, defs:[]};
+    if(t === 0 || t === 5 || !o || o >= size){ insts.push(rec); continue; }
+    if(t < 16){
+      const d = noteDef(o, t);
+      if(d) rec.defs.push(d);
+    } else if(t === 16){                              /* drum set: one def per note in a range */
+      rec.lo = dv.getUint8(o); rec.hi = dv.getUint8(o + 1);
+      const n = rec.hi - rec.lo + 1;
+      if(n > 0 && n <= 128) for(let k = 0; k < n; k++){
+        const b = o + 2 + k*12;                       /* u16 type + 10-byte def */
+        if(b + 12 > size) break;
+        rec.defs.push(noteDef(b + 2, dv.getUint16(b, true)));
+      }
+      rec.label += ` ${rec.lo}-${rec.hi}`;
+    } else if(t === 17){                              /* key split: up to 8 regions */
+      rec.regions = [];
+      for(let k = 0; k < 8; k++) rec.regions.push(dv.getUint8(o + k));
+      for(let k = 0; k < 8 && rec.regions[k]; k++){
+        const b = o + 8 + k*12;
+        if(b + 12 > size) break;
+        rec.defs.push(noteDef(b + 2, dv.getUint16(b, true)));
+      }
+      rec.label += ` (${rec.defs.length})`;
+    }
+    insts.push(rec);
   }
   return {count, insts};
 }
@@ -899,10 +971,428 @@ function patchSdat(sdat, fileId, bytes){
 }
 
 /* ============================================================
+   Wave archives: SWAR -> decoded SWAV samples
+
+   A SWAV holds u8 type (0 PCM8, 1 PCM16, 2 IMA-ADPCM), u8 loop flag,
+   u16 sample rate, u16 timer, u16 loop offset and u32 non-loop length,
+   the last two counted in 32-bit words rather than samples.
+   ============================================================ */
+const IMA_INDEX = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
+const IMA_STEP = [7,8,9,10,11,12,13,14,16,17,19,21,23,25,28,31,34,37,41,45,50,55,60,66,73,80,88,
+  97,107,118,130,143,157,173,190,209,230,253,279,307,337,371,408,449,494,544,598,658,724,796,876,
+  963,1060,1166,1282,1411,1552,1707,1878,2066,2272,2499,2749,3024,3327,3660,4026,4428,4871,5358,
+  5894,6484,7132,7845,8630,9493,10442,11487,12635,13899,15289,16818,18500,20350,22385,24623,27086,
+  29794,32767];
+
+function decodeSwav(u8, at, limit){
+  const dv = new DataView(u8.buffer, u8.byteOffset);
+  if(at + 12 > limit) return null;
+  const type = u8[at], loop = !!u8[at+1];
+  const rate = dv.getUint16(at + 2, true);
+  const loopWords = dv.getUint16(at + 6, true);
+  const nonLoopWords = dv.getUint32(at + 8, true);
+  const dataAt = at + 12;
+  const byteLen = (loopWords + nonLoopWords) * 4;
+  if(!rate || byteLen <= 0 || dataAt + byteLen > limit) return null;
+
+  let pcm, loopStart;
+  if(type === 0){                                     // PCM8, signed
+    pcm = new Float32Array(byteLen);
+    for(let i = 0; i < byteLen; i++){ const v = u8[dataAt+i]; pcm[i] = (v > 127 ? v - 256 : v) / 128; }
+    loopStart = loopWords * 4;
+  } else if(type === 1){                              // PCM16, signed little-endian
+    const n = byteLen >> 1;
+    pcm = new Float32Array(n);
+    for(let i = 0; i < n; i++) pcm[i] = dv.getInt16(dataAt + i*2, true) / 32768;
+    loopStart = loopWords * 2;
+  } else if(type === 2){                              // IMA-ADPCM, 4 bits per sample
+    let pred = dv.getInt16(dataAt, true);
+    let idx = u8[dataAt + 2] & 0x7F;
+    const n = (byteLen - 4) * 2;
+    pcm = new Float32Array(n);
+    let o = 0;
+    for(let i = 4; i < byteLen; i++){
+      const b = u8[dataAt + i];
+      for(const nib of [b & 0x0F, b >> 4]){
+        const step = IMA_STEP[idx];
+        let diff = step >> 3;
+        if(nib & 1) diff += step >> 2;
+        if(nib & 2) diff += step >> 1;
+        if(nib & 4) diff += step;
+        pred = (nib & 8) ? pred - diff : pred + diff;
+        if(pred > 32767) pred = 32767; else if(pred < -32768) pred = -32768;
+        idx += IMA_INDEX[nib];
+        if(idx < 0) idx = 0; else if(idx > 88) idx = 88;
+        if(o < n) pcm[o++] = pred / 32768;
+      }
+    }
+    loopStart = Math.max(0, (loopWords - 1) * 8);      // the first word is the ADPCM seed
+  } else return null;
+
+  if(loopStart >= pcm.length) loopStart = 0;
+  return {pcm, rate, loop, loopStart, type};
+}
+
+function parseSwar(u8, off, size){
+  if(size < 0x40 || off + size > u8.length) return null;
+  if(String.fromCharCode(u8[off],u8[off+1],u8[off+2],u8[off+3]) !== "SWAR") return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset + off, size);
+  const count = dv.getUint32(0x38, true);
+  if(count > 8192) return null;
+  const waves = [];
+  for(let i = 0; i < count && 0x3C + i*4 + 4 <= size; i++){
+    const rel = dv.getUint32(0x3C + i*4, true);
+    waves.push(rel ? decodeSwav(u8, off + rel, off + size) : null);
+  }
+  return {count, waves};
+}
+
+/* ============================================================
+   Collect everything a bank needs: instruments plus its wave archives
+   ============================================================ */
+function loadBankAudio(sdat, bankIndex){
+  const bank = sdat.banks.find(b => b.index === bankIndex);
+  if(!bank) return null;
+  const bf = sdat.fat[bank.fileId];
+  if(!bf) return null;
+  const sbnk = parseSbnk(sdat.u8, bf.off, bf.size);
+  if(!sbnk) return null;
+
+  const arcs = [null, null, null, null];
+  const missing = [];
+  bank.waves.forEach((w, slot) => {
+    if(w === 0xFFFF) return;
+    const wa = sdat.waveArcs[w];
+    if(!wa){ missing.push(`slot ${slot} -> wave archive ${w} not in INFO`); return; }
+    const f = sdat.fat[wa.fileId];
+    if(!f){ missing.push(`slot ${slot} -> file ${wa.fileId} not in FAT`); return; }
+    const sw = parseSwar(sdat.u8, f.off, f.size);
+    if(!sw){ missing.push(`slot ${slot} -> file ${wa.fileId} is not a readable SWAR`); return; }
+    arcs[slot] = sw;
+  });
+  return {bank, sbnk, arcs, missing};
+}
+
+/* pick the note definition an instrument uses for a given key */
+function lookupNote(inst, key){
+  if(!inst || !inst.defs || !inst.defs.length) return null;
+  if(inst.type === 16){
+    if(key < inst.lo || key > inst.hi) return null;
+    return inst.defs[key - inst.lo] || null;
+  }
+  if(inst.type === 17){
+    for(let i = 0; i < inst.regions.length; i++){
+      if(!inst.regions[i]) break;
+      if(key <= inst.regions[i]) return inst.defs[i] || null;
+    }
+    return inst.defs[inst.defs.length - 1] || null;
+  }
+  return inst.defs[0];
+}
+
+/* ============================================================
+   Envelope, volume and pan curves
+
+   These are APPROXIMATIONS. The hardware tracks amplitude in a
+   logarithmic table and truncates the mix to 10 bits; matching it
+   exactly would need the ARM7 tables. Timing and note choice come out
+   right, absolute timbre does not.
+   ============================================================ */
+const dbToAmp = db => Math.pow(10, db / 20);
+const rateSeconds = x => x >= 127 ? 0 : 0.002 * Math.pow(2, (127 - x) / 12);
+function envTimes(def){
+  return {
+    a: def.a >= 127 ? 0.0005 : (1 - def.a / 127) * 0.35 + 0.0005,
+    d: Math.min(8, rateSeconds(def.d)),
+    s: def.s >= 127 ? 1 : dbToAmp(-48 * (1 - def.s / 127)),
+    r: Math.min(8, Math.max(0.004, rateSeconds(def.r)))
+  };
+}
+const volAmp = v => { const x = Math.max(0, Math.min(127, v)) / 127; return x * x; };
+
+/* ============================================================
+   SSEQ interpreter driving a voice mixer.
+   This executes the emitted bytes rather than the intermediate event
+   lists, so the render exercises the writer's actual output.
+   ============================================================ */
+async function renderSequence(seq, audio, opts, onProgress){
+  const rate = opts.sampleRate;
+  const maxSamples = Math.ceil(opts.maxSeconds * rate);
+  const L = new Float32Array(maxSamples), R = new Float32Array(maxSamples);
+
+  const TICK_CONST = 240 * 64 * 2728 / 33513982;      // seconds x tempo per tick
+  const dv = new DataView(seq.buffer, seq.byteOffset, seq.length);
+
+  const mkTrack = pc => ({
+    pc, wait:0, live:true, instr:0, vol:127, vol2:127, pan:64, bend:0, bendRange:2,
+    transpose:0, noteWait:false, tie:false, loopPc:-1, loopLeft:0, stack:[],
+    lastNote:null, jumps:0, budget:0
+  });
+  const tracks = [mkTrack(0)];
+  let tempo = 120, voices = [], written = 0, ticks = 0, stopping = false, warnings = [];
+
+  const vlq = t => { let v = 0, b; do { b = seq[t.pc++]; v = v * 128 + (b & 0x7F); } while((b & 0x80) && t.pc < seq.length); return v; };
+
+  function startNote(t, key, vel, dur){
+    const inst = audio.sbnk.insts[t.instr];
+    const def = lookupNote(inst, key);
+    if(!def) return;
+    let src = null, inc;
+    const cents = t.bend / 64 * t.bendRange * 100;
+    const semis = (key + t.transpose) - def.base + cents / 100;
+    if(def.type === 2 || def.type === 3){
+      const freq = 440 * Math.pow(2, ((key + t.transpose) - 69 + cents / 100) / 12);
+      src = {psg:def.type, duty:def.wave & 7};
+      inc = freq / rate;                              // phase per sample
+    } else {
+      const arc = audio.arcs[def.arc & 3];
+      const w = arc && arc.waves[def.wave];
+      if(!w) return;
+      src = w;
+      inc = (w.rate / rate) * Math.pow(2, semis / 12);
+    }
+    if(voices.length >= 16){                          // hardware channel budget
+      let wi = 0;
+      for(let i = 1; i < voices.length; i++) if(voices[i].amp < voices[wi].amp) wi = i;
+      voices.splice(wi, 1);
+    }
+    const e = envTimes(def);
+    const pan = Math.max(0, Math.min(127, def.pan + t.pan - 64));
+    const th = pan / 127 * Math.PI / 2;
+    voices.push({
+      src, pos:0, inc,
+      phase:0, noise:0x7FFF,
+      gain:volAmp(vel) * volAmp(t.vol) * volAmp(t.vol2),
+      panL:Math.cos(th), panR:Math.sin(th),
+      env:e, amp:0, stage:"a", ticksLeft:dur, releasing:false, t
+    });
+  }
+
+  function step(t){
+    t.budget = 0;
+    while(t.live && t.wait <= 0){
+      if(++t.budget > 4096){ t.live = false; warnings.push("A track ran 4096 commands without waiting and was stopped."); break; }
+      if(t.pc >= seq.length){ t.live = false; break; }
+      const c = seq[t.pc++];
+      if(c < 0x80){                                   // note
+        const vel = seq[t.pc++], dur = vlq(t);
+        startNote(t, c, vel, dur);
+        t.lastNote = dur;
+        if(t.noteWait) t.wait = dur;
+        continue;
+      }
+      switch(c){
+        case OP.WAIT: t.wait = vlq(t); break;
+        case OP.INSTR: t.instr = vlq(t); break;
+        case OP.OPEN_TRACK: {
+          const idx = seq[t.pc++];
+          const off = seq[t.pc] | (seq[t.pc+1] << 8) | (seq[t.pc+2] << 16); t.pc += 3;
+          while(tracks.length <= idx) tracks.push(null);
+          tracks[idx] = mkTrack(off);
+          break;
+        }
+        case OP.JUMP: {
+          const off = seq[t.pc] | (seq[t.pc+1] << 8) | (seq[t.pc+2] << 16); t.pc += 3;
+          if(off <= t.pc) t.jumps++;
+          t.pc = off;
+          if(t === tracks[0] && t.jumps > opts.loops) stopping = true;
+          break;
+        }
+        case OP.CALL: {
+          const off = seq[t.pc] | (seq[t.pc+1] << 8) | (seq[t.pc+2] << 16); t.pc += 3;
+          t.stack.push(t.pc); t.pc = off; break;
+        }
+        case OP.RETURN: t.pc = t.stack.length ? t.stack.pop() : seq.length; break;
+        case OP.ALLOC_TRACKS: t.pc += 2; break;
+        case OP.PAN: t.pan = seq[t.pc++]; break;
+        case OP.VOL: t.vol = seq[t.pc++]; break;
+        case OP.VOL2: t.vol2 = seq[t.pc++]; break;
+        case OP.MAIN_VOL: t.pc++; break;
+        case OP.TRANSPOSE: { const v = seq[t.pc++]; t.transpose = v > 127 ? v - 256 : v; break; }
+        case OP.BEND: { const v = seq[t.pc++]; t.bend = v > 127 ? v - 256 : v; break; }
+        case OP.BEND_RANGE: t.bendRange = seq[t.pc++]; break;
+        case OP.NOTE_WAIT: t.noteWait = !!seq[t.pc++]; break;
+        case OP.TIE: t.tie = !!seq[t.pc++]; break;
+        case OP.LOOP_START: t.loopLeft = seq[t.pc++]; t.loopPc = t.pc; break;
+        case OP.LOOP_END:
+          if(t.loopPc >= 0){
+            if(t.loopLeft === 0) t.pc = t.loopPc;
+            else if(--t.loopLeft > 0) t.pc = t.loopPc;
+            else t.loopPc = -1;
+          }
+          break;
+        case OP.TEMPO: tempo = Math.max(1, dv.getUint16(t.pc, true)); t.pc += 2; break;
+        case OP.MOD_DELAY: case OP.SWEEP_PITCH: t.pc += 2; break;
+        case OP.FIN: t.live = false; break;
+        default:
+          if(c >= 0xC0 && c <= 0xD6) t.pc++;          /* modulation, portamento, envelope tweaks */
+          else if(c >= 0xB0 && c <= 0xBD) t.pc += 3;  /* variable ops */
+          else { t.live = false; }
+      }
+    }
+    if(t.wait > 0) t.wait--;
+  }
+
+  /* main loop: one sequence tick at a time, mixing the audio it spans */
+  let yieldAt = performance.now(), lastYield = 0;
+  while(written < maxSamples){
+    let any = false;
+    for(const t of tracks.slice()) if(t && t.live){ step(t); any = true; }
+    ticks++;
+
+    const secs = TICK_CONST / tempo;
+    let n = Math.round(secs * rate);
+    if(written + n > maxSamples) n = maxSamples - written;
+
+    for(const v of voices){
+      if(v.ticksLeft > 0 && --v.ticksLeft === 0) v.releasing = true;
+      if(stopping) v.releasing = true;
+    }
+    mix(L, R, written, n, voices, rate);
+    written += n;
+
+    voices = voices.filter(v => !v.dead);
+    if(!any && !voices.length) break;
+    if(stopping && !voices.length) break;
+
+    if(performance.now() - yieldAt > 60 || written - lastYield >= rate){
+      yieldAt = performance.now(); lastYield = written;
+      if(onProgress) onProgress(written / maxSamples);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  /* short fade so a truncated render does not click */
+  const fade = Math.min(written, Math.round(0.06 * rate));
+  for(let i = 0; i < fade; i++){
+    const g = i / fade, o = written - 1 - i;      /* i=0 is the last sample, gain 0 */
+    L[o] *= g; R[o] *= g;
+  }
+  return {left:L.subarray(0, written), right:R.subarray(0, written), rate, ticks, warnings};
+}
+
+const DUTY = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 0.5];
+
+function mix(L, R, at, n, voices, rate){
+  for(const v of voices){
+    const e = v.env, src = v.src, pcm = src.pcm;
+    for(let i = 0; i < n; i++){
+      /* envelope */
+      if(v.releasing){
+        v.amp -= v.amp / Math.max(1, e.r * rate) * 4;
+        if(v.amp < 0.0002){ v.dead = true; break; }
+      } else if(v.stage === "a"){
+        v.amp += 1 / Math.max(1, e.a * rate);
+        if(v.amp >= 1){ v.amp = 1; v.stage = "d"; }
+      } else if(v.stage === "d"){
+        v.amp -= (v.amp - e.s) / Math.max(1, e.d * rate) * 4;
+        if(v.amp <= e.s + 0.001){ v.amp = e.s; v.stage = "s"; }
+      }
+
+      let s;
+      if(src.psg === 2){                              // PSG square, duty from the note def
+        const duty = DUTY[src.duty];
+        s = v.phase < duty ? 0.35 : -0.35;
+        v.phase += v.inc;
+        while(v.phase >= 1) v.phase -= 1;
+      } else if(src.psg === 3){                       // PSG noise, 15-bit LFSR
+        v.phase += v.inc;
+        while(v.phase >= 1){
+          v.phase -= 1;
+          v.noise = (v.noise >> 1) ^ ((v.noise & 1) ? 0x6000 : 0);
+        }
+        s = (v.noise & 1) ? 0.3 : -0.3;
+      } else {
+        const p = v.pos;
+        if(p >= pcm.length - 1){
+          if(src.loop){ v.pos = src.loopStart + (p - (pcm.length - 1)); s = pcm[v.pos | 0] || 0; }
+          else { v.dead = true; break; }
+        } else {
+          const i0 = p | 0, fr = p - i0;
+          s = pcm[i0] * (1 - fr) + pcm[i0 + 1] * fr;
+        }
+        v.pos += v.inc;
+      }
+      const g = s * v.amp * v.gain;
+      L[at + i] += g * v.panL;
+      R[at + i] += g * v.panR;
+    }
+  }
+}
+
+/* ============================================================
+   Encoders
+   ============================================================ */
+function toInt16(f){
+  const o = new Int16Array(f.length);
+  for(let i = 0; i < f.length; i++){
+    let s = f[i];
+    if(s > 1) s = 1; else if(s < -1) s = -1;
+    o[i] = s < 0 ? s * 32768 : s * 32767;
+  }
+  return o;
+}
+
+function encodeWav(left, right, rate){
+  const n = left.length, bytes = 44 + n * 4;
+  const buf = new ArrayBuffer(bytes), dv = new DataView(buf);
+  const put = (o, s) => { for(let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  put(0, "RIFF"); dv.setUint32(4, bytes - 8, true); put(8, "WAVE");
+  put(12, "fmt "); dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true); dv.setUint16(22, 2, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 4, true);
+  dv.setUint16(32, 4, true); dv.setUint16(34, 16, true);
+  put(36, "data"); dv.setUint32(40, n * 4, true);
+  const li = toInt16(left), ri = toInt16(right);
+  let o = 44;
+  for(let i = 0; i < n; i++){ dv.setInt16(o, li[i], true); dv.setInt16(o + 2, ri[i], true); o += 4; }
+  return new Uint8Array(buf);
+}
+
+const LAME_URL = "https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js";
+let lamePromise = null;
+function loadLame(){
+  if(window.lamejs) return Promise.resolve(window.lamejs);
+  if(lamePromise) return lamePromise;
+  lamePromise = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = LAME_URL;
+    s.onload = () => window.lamejs ? res(window.lamejs) : rej(new Error("lamejs loaded but exposed nothing"));
+    s.onerror = () => rej(new Error("could not reach the MP3 encoder on cdnjs"));
+    document.head.appendChild(s);
+  });
+  return lamePromise;
+}
+
+async function encodeMp3(left, right, rate, kbps, onProgress){
+  const lame = await loadLame();
+  const enc = new lame.Mp3Encoder(2, rate, kbps);
+  const li = toInt16(left), ri = toInt16(right);
+  const chunks = [];
+  const block = 1152;
+  let yieldAt = performance.now();
+  for(let i = 0; i < li.length; i += block){
+    const b = enc.encodeBuffer(li.subarray(i, i + block), ri.subarray(i, i + block));
+    if(b.length) chunks.push(new Uint8Array(b));
+    if(performance.now() - yieldAt > 60){
+      yieldAt = performance.now();
+      if(onProgress) onProgress(i / li.length);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  const tail = enc.flush();
+  if(tail.length) chunks.push(new Uint8Array(tail));
+  let total = 0; for(const c of chunks) total += c.length;
+  const out = new Uint8Array(total);
+  let o = 0; for(const c of chunks){ out.set(c, o); o += c.length; }
+  return out;
+}
+
+/* ============================================================
    UI
    ============================================================ */
 const $ = id => document.getElementById(id);
-const state = {midi:null, midiName:"", sdat:null, sbnk:null, groups:[], overrides:{}, progMap:{}, drumInstr:0, out:null, built:null};
+const state = {midi:null, midiName:"", sdat:null, sbnk:null, groups:[], overrides:{}, progMap:{}, drumInstr:0, out:null, built:null, audio:null, wav:null, mp3:null, pcm:null};
 
 /* ---- file pickers ---- */
 $("drop").addEventListener("click", () => $("midiFile").click());
@@ -977,6 +1467,15 @@ function loadSelectedBank(){
     const used = state.sbnk.insts.filter(i => i.type !== 0 && i.type !== 5).length;
     $("sdatInfo").insertAdjacentHTML("beforeend",
       `<span class="tag">bank ${esc(bank.name)}</span>${used} of ${state.sbnk.count} slots filled`);
+  }
+  /* pull in the wave archives so audio export has samples to work with */
+  state.audio = loadBankAudio(state.sdat, bi);
+  if(state.audio){
+    let n = 0;
+    for(const a of state.audio.arcs) if(a) n += a.waves.filter(Boolean).length;
+    $("sdatInfo").insertAdjacentHTML("beforeend", `<span class="tag">samples</span>${n} decoded`);
+    if(state.audio.missing.length)
+      $("sdatInfo").insertAdjacentHTML("beforeend", `<span class="tag">unresolved</span>${esc(state.audio.missing.join("; "))}`);
   }
 }
 
@@ -1086,7 +1585,7 @@ function runConvert(){
   try{
     const cfg = {
       groupBy:$("groupBy").value,
-      tickMul:+$("tickMul").value,
+      tickScale:(+$("tickGrid").value) / BASE_TPQN,
       poly:Math.max(1, Math.min(16, +$("poly").value)),
       bendRange:Math.max(1, Math.min(24, +$("bendRange").value)),
       drumShift:+$("drumShift").value | 0,
@@ -1125,6 +1624,14 @@ function runConvert(){
     renderDisasm(built.seq, built.tracks.length);
     $("dlSseq").disabled = false;
     $("dlSdat").disabled = !state.sdat;
+    state.wav = state.mp3 = state.pcm = null;
+    $("dlMp3").disabled = $("dlWav").disabled = true;
+    $("player").classList.add("hidden");
+    $("audioPanel").classList.remove("hidden");
+    $("renderStatus").classList.remove("hidden");
+    $("renderStatus").innerHTML = state.audio
+      ? '<span class="tag">ready</span>press Render audio'
+      : '<span class="tag">blocked</span>load sound_data.sdat and pick a bank first, the samples live there';
   }catch(err){
     report.err(err.message);
     renderReport(report, null, null);
@@ -1184,6 +1691,71 @@ $("dlSdat").addEventListener("click", () => {
     download(new Blob([patched], {type:"application/octet-stream"}), "sound_data.sdat");
   }catch(err){ alert("Could not patch the archive. " + err.message); }
 });
+/* ---- audio export ---- */
+$("renderBtn").addEventListener("click", async () => {
+  if(!state.built){ return; }
+  if(!state.audio){
+    $("renderStatus").innerHTML = '<span class="tag">blocked</span>no bank samples loaded, so there is nothing to render';
+    return;
+  }
+  const btn = $("renderBtn"), st = $("renderStatus");
+  btn.disabled = true; st.classList.remove("hidden");
+  $("dlMp3").disabled = $("dlWav").disabled = true;
+  try{
+    const opts = {
+      sampleRate:+$("renderRate").value,
+      maxSeconds:Math.max(5, Math.min(600, +$("renderLen").value)),
+      loops:Math.max(0, Math.min(8, +$("renderLoops").value))
+    };
+    st.innerHTML = '<span class="tag">rendering</span>0%';
+    const pcm = await renderSequence(state.built.seq, state.audio, opts,
+      f => { st.innerHTML = `<span class="tag">rendering</span>${Math.round(f*100)}%`; });
+    state.pcm = pcm;
+    const secs = pcm.left.length / pcm.rate;
+    let peak = 0;
+    for(let i = 0; i < pcm.left.length; i++){
+      const l = Math.abs(pcm.left[i]), r = Math.abs(pcm.right[i]);
+      if(l > peak) peak = l; if(r > peak) peak = r;
+    }
+    /* normalise only if it would clip, so quiet mixes stay quiet */
+    if(peak > 1){
+      const g = 0.98 / peak;
+      for(let i = 0; i < pcm.left.length; i++){ pcm.left[i] *= g; pcm.right[i] *= g; }
+    }
+    st.innerHTML = `<span class="tag">rendered</span>${secs.toFixed(1)} s` +
+      `<span class="tag">ticks</span>${pcm.ticks}` +
+      `<span class="tag">peak</span>${(20*Math.log10(peak||1e-6)).toFixed(1)} dBFS` +
+      (peak > 1 ? '<span class="tag">note</span>mix clipped, gain reduced' : '') +
+      (peak < 0.001 ? '<span class="tag">warning</span>near silence, check the instrument mapping' : '');
+    pcm.warnings.forEach(w => st.insertAdjacentHTML("beforeend", `<span class="tag">warning</span>${esc(w)}`));
+
+    state.wav = encodeWav(pcm.left, pcm.right, pcm.rate);
+    $("dlWav").disabled = false;
+    const p = $("player");
+    p.src = URL.createObjectURL(new Blob([state.wav], {type:"audio/wav"}));
+    p.classList.remove("hidden");
+
+    st.insertAdjacentHTML("beforeend", '<span class="tag">mp3</span>encoding');
+    try{
+      state.mp3 = await encodeMp3(pcm.left, pcm.right, pcm.rate, +$("renderKbps").value,
+        f => { /* keep the line stable, just let it finish */ });
+      $("dlMp3").disabled = false;
+      st.insertAdjacentHTML("beforeend", `<span class="tag">mp3 ready</span>${(state.mp3.length/1024).toFixed(0)} KB`);
+    }catch(err){
+      st.insertAdjacentHTML("beforeend",
+        `<span class="tag">mp3 failed</span>${esc(err.message)}, WAV is still available`);
+    }
+  }catch(err){
+    st.innerHTML = `<span class="tag">error</span>${esc(err.message)}`;
+  }finally{ btn.disabled = false; }
+});
+$("dlMp3").addEventListener("click", () => {
+  if(state.mp3) download(new Blob([state.mp3], {type:"audio/mpeg"}), (state.midiName || "output") + ".mp3");
+});
+$("dlWav").addEventListener("click", () => {
+  if(state.wav) download(new Blob([state.wav], {type:"audio/wav"}), (state.midiName || "output") + ".wav");
+});
+
 function download(blob, name){
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = name;
