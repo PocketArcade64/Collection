@@ -46,3 +46,8 @@ Example target CLI
 midi2sseq input.mid --bank gen4.sbnk --wave gen4.swar --mapping mapping.json --loop-marker "loop" -o output.sseq
 Deliverable
 A working HTML file implementing the pipeline above, a program that accepts midi files and outputs those files in the Pokemon Gen 4 sound front
+________
+Before you code anything, Is there a way to feasibly implement a way to separate the different colored pieces in a model and also make them snap together with a male-female type connector?
+Connector shape? - Keyed peg (prevents rotation) — recommended
+Output format for the split pieces? - Both, as a toggle
+Splitting granularity to start with? - separate by color
