@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>midi2sseq · MIDI to Nitro Composer SSEQ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Public+Sans:ital,wght@0,400;0,500;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16203a;
+  --ink-2:#3c4a68;
+  --dim:#6b7d99;
+  --paper:#e9eff6;
+  --card:#ffffff;
+  --rule:#c3d3e4;
+  --rule-soft:#dde7f1;
+  --accent:#2f6fd0;
+  --accent-ink:#1b4d9b;
+  --hot:#d94270;
+  --ok:#12806a;
+  --warn:#a8660c;
+  --shadow:0 1px 0 rgba(255,255,255,.9) inset, 0 1px 2px rgba(22,32,58,.07), 0 8px 24px -18px rgba(22,32,58,.5);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1100px 520px at 12% -8%, #f7fafd 0%, rgba(247,250,253,0) 62%),
+    linear-gradient(180deg,#eef3f8 0%, #e4ecf4 100%);
+  color:var(--ink);
+  font:400 15px/1.55 "Public Sans", system-ui, sans-serif;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1140px;margin:0 auto;padding:34px 22px 90px}
+
+/* ---------- header ---------- */
+header.top{margin-bottom:26px}
+.rules{height:5px;border-top:1px solid var(--ink);border-bottom:1px solid var(--rule);margin-bottom:16px}
+h1{
+  font-family:"Bricolage Grotesque",sans-serif;
+  font-weight:800;font-size:clamp(30px,5.2vw,50px);
+  letter-spacing:-.03em;line-height:.98;margin:0;
+  font-variation-settings:"opsz" 48;
+}
+h1 .sub{color:var(--accent);font-weight:600}
+.tagline{margin:10px 0 0;max-width:56ch;color:var(--ink-2)}
+.specline{
+  margin-top:14px;display:flex;flex-wrap:wrap;gap:6px 18px;
+  font:500 11.5px/1 "IBM Plex Mono",monospace;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.09em;
+}
+.specline b{color:var(--ink);font-weight:600}
+
+/* ---------- panels ---------- */
+.panel{
+  background:var(--card);border:1px solid var(--rule);border-radius:11px;
+  box-shadow:var(--shadow);padding:18px 20px;margin-bottom:18px;
+}
+.panel > h2{
+  font-family:"Bricolage Grotesque",sans-serif;font-weight:600;
+  font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 14px;display:flex;align-items:center;gap:10px;
+}
+.panel > h2::after{content:"";flex:1;height:1px;background:var(--rule-soft)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:820px){.grid2{grid-template-columns:1fr}}
+
+/* ---------- drop zone ---------- */
+.drop{
+  border:1.5px dashed var(--rule);border-radius:10px;background:#f6f9fc;
+  padding:26px 20px;text-align:center;cursor:pointer;transition:.16s;
+}
+.drop:hover,.drop.hot{border-color:var(--accent);background:#eef4fd}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.drop strong{display:block;font-family:"Bricolage Grotesque",sans-serif;font-size:17px;font-weight:600}
+.drop span{color:var(--dim);font-size:13px}
+.fileline{
+  display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;
+  font:500 12.5px/1.4 "IBM Plex Mono",monospace;margin-top:12px;color:var(--ink-2);
+}
+.fileline .tag{color:var(--dim)}
+
+/* ---------- controls ---------- */
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+label.lbl{font:500 11px/1 "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+input[type=text],input[type=number],select{
+  font:500 13.5px "IBM Plex Mono",monospace;color:var(--ink);
+  background:#fbfdff;border:1px solid var(--rule);border-radius:7px;padding:7px 9px;
+}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+input[type=number]{width:88px}
+.check{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--ink-2)}
+.hint{font-size:12.5px;color:var(--dim);margin:2px 0 0}
+
+button{
+  font:600 13.5px "Public Sans",sans-serif;cursor:pointer;
+  border:1px solid var(--rule);background:#fbfdff;color:var(--ink);
+  border-radius:8px;padding:9px 15px;transition:.14s;
+}
+button:hover{border-color:var(--accent);color:var(--accent-ink)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent-ink);color:#fff}
+button.primary:hover{background:var(--accent-ink);color:#fff}
+button:disabled{opacity:.42;cursor:not-allowed;border-color:var(--rule);color:var(--dim)}
+button.primary:disabled{background:#a8bdd8;border-color:#a8bdd8;color:#f2f6fb}
+
+/* ---------- track table ---------- */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{
+  text-align:left;font:500 10.5px/1 "IBM Plex Mono",monospace;
+  text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+  padding:0 8px 8px;border-bottom:1px solid var(--rule);white-space:nowrap;
+}
+td{padding:7px 8px;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+td.num,th.num{text-align:right;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}
+td.name{font-weight:500}
+td input[type=number]{width:70px;padding:5px 7px;font-size:13px}
+.chip{
+  display:inline-block;font:500 10.5px/1 "IBM Plex Mono",monospace;
+  padding:4px 6px;border-radius:5px;background:#eef4fd;color:var(--accent-ink);
+  border:1px solid #d3e2f6;letter-spacing:.04em;
+}
+.chip.drum{background:#fdeef3;color:#a12a4f;border-color:#f6d3e0}
+.chip.cut{background:#f2f4f7;color:var(--dim);border-color:#e3e8ef}
+tr.dropped td{opacity:.5}
+
+/* ---------- SIGNATURE: opcode tape ---------- */
+.tape-shell{background:var(--card);border:1px solid var(--rule);border-radius:11px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
+.tape-head{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:14px 20px;border-bottom:1px solid var(--rule);
+}
+.tape-head h2{
+  font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:12px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0;
+}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-left:auto;font:500 10.5px/1 "IBM Plex Mono",monospace}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tape{
+  padding:14px 20px 16px;overflow-x:auto;background:
+    repeating-linear-gradient(90deg,#fbfdff 0 60px,#f6f9fc 60px 120px);
+}
+.tape-line{display:flex;gap:3px;min-width:max-content;padding-bottom:4px}
+.byte{
+  font:500 12px/1 "IBM Plex Mono",monospace;padding:6px 5px;border-radius:4px;
+  background:#eef2f7;color:var(--ink-2);border:1px solid transparent;
+  cursor:default;transition:transform .1s;
+}
+.byte:hover{transform:translateY(-2px);border-color:var(--ink)}
+.b-note{background:#dfeafb;color:#14458f}
+.b-wait{background:#f0f3f7;color:#8493ab}
+.b-inst{background:#ece4fa;color:#5a3ba8}
+.b-ctrl{background:#dcf1ec;color:#0d6a58}
+.b-struct{background:#fbe1ea;color:#a5234c}
+.b-arg{background:#f7f9fc;color:#9aa8bd}
+.tape-foot{
+  padding:10px 20px 14px;font:500 11.5px/1.5 "IBM Plex Mono",monospace;color:var(--dim);
+  border-top:1px dashed var(--rule-soft);
+}
+
+/* ---------- disassembly ---------- */
+pre.disasm{
+  margin:0;max-height:340px;overflow:auto;
+  font:400 12.5px/1.65 "IBM Plex Mono",monospace;
+  background:#fbfdff;border:1px solid var(--rule-soft);border-radius:8px;padding:12px 14px;
+  white-space:pre;color:var(--ink-2);
+}
+pre.disasm .o{color:#9aa8bd}
+pre.disasm .m{color:var(--accent-ink);font-weight:600}
+pre.disasm .l{color:var(--hot);font-weight:600}
+pre.disasm .c{color:var(--dim)}
+
+/* ---------- log ---------- */
+ul.log{list-style:none;margin:0;padding:0;font-size:13.5px}
+ul.log li{padding:5px 0 5px 22px;position:relative;border-bottom:1px solid var(--rule-soft)}
+ul.log li:last-child{border-bottom:none}
+ul.log li::before{position:absolute;left:0;top:5px;font:600 11px/1.5 "IBM Plex Mono",monospace}
+li.ok::before{content:"OK";color:var(--ok)}
+li.warn::before{content:"!";color:var(--warn);left:5px}
+li.err::before{content:"X";color:var(--hot);left:4px}
+li.info::before{content:"·";color:var(--dim);left:6px;font-size:16px;top:2px}
+ul.log code{font:500 12.5px "IBM Plex Mono",monospace;background:#f1f5fa;padding:1px 4px;border-radius:4px}
+
+.stat-strip{display:flex;gap:26px;flex-wrap:wrap;margin-bottom:4px}
+.stat{display:flex;flex-direction:column;gap:2px}
+.stat b{font-family:"IBM Plex Mono",monospace;font-size:21px;font-weight:600;letter-spacing:-.02em}
+.stat span{font:500 10.5px/1 "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.09em;color:var(--dim)}
+
+.hidden{display:none !important}
+details.fold{border-top:1px solid var(--rule-soft);margin-top:14px;padding-top:12px}
+details.fold summary{cursor:pointer;font:500 11.5px/1 "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.09em;color:var(--accent-ink)}
+details.fold summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+footer.note{margin-top:26px;font-size:13px;color:var(--dim);max-width:74ch}
+footer.note code{font-family:"IBM Plex Mono",monospace;background:#e3ebf4;padding:1px 5px;border-radius:4px}
+@media(prefers-reduced-motion:reduce){*{transition:none !important;animation:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="rules"></div>
+  <h1>midi2sseq <span class="sub">/ nitro composer</span></h1>
+  <p class="tagline">Converts a standard MIDI file into a Nintendo DS SSEQ sequence, the format Pokémon Diamond, Pearl, Platinum, HeartGold and SoulSilver use for music. Everything runs in this page; nothing is uploaded anywhere.</p>
+  <div class="specline">
+    <span><b>48</b> ticks per quarter</span>
+    <span><b>16</b> tracks max</span>
+    <span><b>1&ndash;240</b> BPM</span>
+    <span>duration-encoded notes</span>
+    <span>timbre comes from the game's <b>SBNK + SWAR</b></span>
+  </div>
+</header>
+
+<!-- ===== 1. input ===== -->
+<section class="panel">
+  <h2>1 · Source MIDI</h2>
+  <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a MIDI file">
+    <strong>Drop a .mid file here</strong>
+    <span>or press Enter to browse. Format 0 and format 1 both work.</span>
+  </div>
+  <input type="file" id="midiFile" accept=".mid,.midi" class="hidden">
+  <div class="fileline hidden" id="midiInfo"></div>
+</section>
+
+<!-- ===== 2. bank ===== -->
+<section class="panel">
+  <h2>2 · Instrument bank</h2>
+  <p class="hint" style="margin-top:-4px;margin-bottom:12px">Gen 4's sound cannot be synthesised from scratch: it lives in the game's own SBNK and SWAR. Extract <code style="font-family:'IBM Plex Mono',monospace">sound_data.sdat</code> from a ROM once with a NitroFS tool such as Tinke or ndstool, then load it here. Loading it is optional for making an SSEQ, but it lets this page list the real instrument indices instead of guessing, and lets you write the result straight back into the archive.</p>
+  <div class="row">
+    <button id="pickSdat">Load sound_data.sdat</button>
+    <input type="file" id="sdatFile" accept=".sdat" class="hidden">
+    <div class="field">
+      <label class="lbl" for="bankSel">Bank used for the mapping list</label>
+      <select id="bankSel" disabled><option>no archive loaded</option></select>
+    </div>
+  </div>
+  <div class="fileline hidden" id="sdatInfo"></div>
+</section>
+
+<!-- ===== 3. tracks and mapping ===== -->
+<section class="panel hidden" id="trackPanel">
+  <h2>3 · Tracks and instrument mapping</h2>
+  <p class="hint" style="margin-top:-4px;margin-bottom:12px">One row per output SSEQ track. <b>Instr</b> is an index into the SBNK, not a General MIDI program: Gen 4's bank is not laid out like GM, so the starting guess is program number passed straight through and you are expected to correct it by ear.</p>
+  <div style="overflow-x:auto"><table id="trackTable"><thead><tr>
+    <th class="num">SSEQ</th><th>Source</th><th class="num">Ch</th><th class="num">Prog</th>
+    <th class="num">Instr</th><th class="num">Vol</th><th class="num">Pan</th>
+    <th class="num">Notes</th><th>Bank slot</th>
+  </tr></thead><tbody></tbody></table></div>
+  <div class="row" style="margin-top:14px;margin-bottom:0">
+    <button id="exportMap">Save mapping.json</button>
+    <button id="importMap">Load mapping.json</button>
+    <input type="file" id="mapFile" accept=".json" class="hidden">
+  </div>
+</section>
+
+<!-- ===== 4. options ===== -->
+<section class="panel hidden" id="optPanel">
+  <h2>4 · Conversion options</h2>
+  <div class="grid2">
+    <div>
+      <div class="row">
+        <div class="field">
+          <label class="lbl" for="groupBy">Group notes into tracks by</label>
+          <select id="groupBy">
+            <option value="channel">MIDI channel</option>
+            <option value="track">MIDI track</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lbl" for="tickMul">Tick multiplier</label>
+          <select id="tickMul">
+            <option value="0">auto</option><option value="1">1&times;</option>
+            <option value="2">2&times;</option><option value="4">4&times;</option>
+          </select>
+        </div>
+      </div>
+      <p class="hint">A quarter note is always 48 ticks and tempo caps at 240 BPM. Auto multiplies every tick value and divides BPM by the same power of two, so fast MIDI files stay in range and timing is unchanged.</p>
+      <div class="row" style="margin-top:14px">
+        <div class="field">
+          <label class="lbl" for="poly">Polyphony cap</label>
+          <input type="number" id="poly" min="1" max="16" value="12">
+        </div>
+        <div class="field">
+          <label class="lbl" for="bendRange">Bend range (semitones)</label>
+          <input type="number" id="bendRange" min="1" max="24" value="2">
+        </div>
+        <div class="field">
+          <label class="lbl" for="drumShift">Drum note offset</label>
+          <input type="number" id="drumShift" min="-48" max="48" value="0">
+        </div>
+      </div>
+      <p class="hint">The DS mixes 16 hardware channels across music and sound effects. Leaving a few free stops the engine from cutting your music off when a cry or menu blip plays. Notes over the cap are dropped quietest-first and counted in the report.</p>
+    </div>
+    <div>
+      <div class="row">
+        <div class="field">
+          <label class="lbl" for="loopMode">Loop</label>
+          <select id="loopMode">
+            <option value="marker">From marker, then repeat</option>
+            <option value="whole">Whole sequence, forever</option>
+            <option value="tick">From a MIDI tick</option>
+            <option value="none">Play once and stop</option>
+          </select>
+        </div>
+        <div class="field" id="markerField">
+          <label class="lbl" for="loopMarker">Marker text</label>
+          <input type="text" id="loopMarker" value="loop" size="10">
+        </div>
+        <div class="field hidden" id="tickField">
+          <label class="lbl" for="loopTick">MIDI tick</label>
+          <input type="number" id="loopTick" min="0" value="0">
+        </div>
+      </div>
+      <p class="hint">MIDI has no loop concept, so one is imposed. Marker mode looks for a marker or text meta event containing that word; if none exists it falls back to looping the whole sequence. Every track is padded to the same end tick before jumping, otherwise they drift apart on the second pass.</p>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:9px">
+        <label class="check"><input type="checkbox" id="roundBar" checked> Round the loop end up to a whole bar</label>
+        <label class="check"><input type="checkbox" id="sendCC" checked> Carry volume, expression, pan and mod wheel</label>
+        <label class="check"><input type="checkbox" id="sendBend" checked> Carry pitch bend</label>
+      </div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:18px;margin-bottom:0">
+    <button class="primary" id="convert">Convert to SSEQ</button>
+    <button id="dlSseq" disabled>Save .sseq</button>
+    <button id="dlSdat" disabled>Save patched .sdat</button>
+    <div class="field" id="targetField" style="margin-left:auto">
+      <label class="lbl" for="targetSel">Sequence to overwrite in the archive</label>
+      <select id="targetSel" disabled><option>no archive loaded</option></select>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 5. report ===== -->
+<section class="panel hidden" id="reportPanel">
+  <h2>5 · Report</h2>
+  <div class="stat-strip" id="stats"></div>
+  <ul class="log" id="log"></ul>
+</section>
+
+<!-- ===== SIGNATURE: opcode tape ===== -->
+<div class="tape-shell hidden" id="tapePanel">
+  <div class="tape-head">
+    <h2>Opcode tape</h2>
+    <div class="legend">
+      <span><i style="background:#dfeafb"></i>note</span>
+      <span><i style="background:#f0f3f7"></i>wait</span>
+      <span><i style="background:#ece4fa"></i>instr</span>
+      <span><i style="background:#dcf1ec"></i>control</span>
+      <span><i style="background:#fbe1ea"></i>structure</span>
+      <span><i style="background:#f7f9fc"></i>argument</span>
+    </div>
+  </div>
+  <div class="tape"><div class="tape-line" id="tapeLine"></div></div>
+  <div class="tape-foot" id="tapeFoot"></div>
+</div>
+
+<!-- ===== disassembly ===== -->
+<section class="panel hidden" id="disPanel">
+  <h2>6 · Verification</h2>
+  <p class="hint" style="margin-top:-4px;margin-bottom:12px">The bytes above were read back with an independent decoder, which is how encoding mistakes surface early. It is not proof of a good conversion: play the file in an SSEQ player or a DS emulator before you trust it.</p>
+  <pre class="disasm" id="disasm"></pre>
+</section>
+
+<footer class="note">
+  Built against the Nitro Composer sequence command table. Notes carry their own duration, so there are no note-off events; time advances only through <code>0x80</code> waits, with note-wait switched off at the top of every track so chords stack. Track offsets in <code>0x93</code> and <code>0x94</code> are 24-bit and relative to the start of the sequence data, which is why the writer resolves labels in a second pass.
+</footer>
+
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   Nitro Composer sequence opcodes
+   ============================================================ */
+const OP = {
+  WAIT:0x80, INSTR:0x81, OPEN_TRACK:0x93, JUMP:0x94, CALL:0x95,
+  PAN:0xC0, VOL:0xC1, MAIN_VOL:0xC2, TRANSPOSE:0xC3, BEND:0xC4,
+  BEND_RANGE:0xC5, PRIORITY:0xC6, NOTE_WAIT:0xC7, TIE:0xC8,
+  PORTA_KEY:0xC9, MOD_DEPTH:0xCA, MOD_SPEED:0xCB, MOD_TYPE:0xCC,
+  MOD_RANGE:0xCD, PORTA_SW:0xCE, PORTA_TIME:0xCF,
+  ATTACK:0xD0, DECAY:0xD1, SUSTAIN:0xD2, RELEASE:0xD3,
+  LOOP_START:0xD4, VOL2:0xD5, PRINT_VAR:0xD6,
+  MOD_DELAY:0xE0, TEMPO:0xE1, SWEEP_PITCH:0xE2,
+  LOOP_END:0xFC, RETURN:0xFD, ALLOC_TRACKS:0xFE, FIN:0xFF
+};
+const BASE_TPQN = 48;        // fixed by the DS sequence player
+const MAX_BPM   = 240;       // above this the player mistimes
+const MAX_TRACKS = 16;
+const SEQ_DATA_START = 0x1C; // SSEQ header (0x10) + DATA header (0x08) + offset field (0x04)
+
+const GM_NAMES = ("Acoustic Grand Piano,Bright Acoustic Piano,Electric Grand Piano,Honky-tonk Piano,Electric Piano 1,Electric Piano 2,Harpsichord,Clavinet,Celesta,Glockenspiel,Music Box,Vibraphone,Marimba,Xylophone,Tubular Bells,Dulcimer,Drawbar Organ,Percussive Organ,Rock Organ,Church Organ,Reed Organ,Accordion,Harmonica,Tango Accordion,Acoustic Guitar (nylon),Acoustic Guitar (steel),Electric Guitar (jazz),Electric Guitar (clean),Electric Guitar (muted),Overdriven Guitar,Distortion Guitar,Guitar Harmonics,Acoustic Bass,Electric Bass (finger),Electric Bass (pick),Fretless Bass,Slap Bass 1,Slap Bass 2,Synth Bass 1,Synth Bass 2,Violin,Viola,Cello,Contrabass,Tremolo Strings,Pizzicato Strings,Orchestral Harp,Timpani,String Ensemble 1,String Ensemble 2,Synth Strings 1,Synth Strings 2,Choir Aahs,Voice Oohs,Synth Voice,Orchestra Hit,Trumpet,Trombone,Tuba,Muted Trumpet,French Horn,Brass Section,Synth Brass 1,Synth Brass 2,Soprano Sax,Alto Sax,Tenor Sax,Baritone Sax,Oboe,English Horn,Bassoon,Clarinet,Piccolo,Flute,Recorder,Pan Flute,Blown Bottle,Shakuhachi,Whistle,Ocarina,Lead 1 (square),Lead 2 (sawtooth),Lead 3 (calliope),Lead 4 (chiff),Lead 5 (charang),Lead 6 (voice),Lead 7 (fifths),Lead 8 (bass+lead),Pad 1 (new age),Pad 2 (warm),Pad 3 (polysynth),Pad 4 (choir),Pad 5 (bowed),Pad 6 (metallic),Pad 7 (halo),Pad 8 (sweep),FX 1 (rain),FX 2 (soundtrack),FX 3 (crystal),FX 4 (atmosphere),FX 5 (brightness),FX 6 (goblins),FX 7 (echoes),FX 8 (sci-fi),Sitar,Banjo,Shamisen,Koto,Kalimba,Bagpipe,Fiddle,Shanai,Tinkle Bell,Agogo,Steel Drums,Woodblock,Taiko Drum,Melodic Tom,Synth Drum,Reverse Cymbal,Guitar Fret Noise,Breath Noise,Seashore,Bird Tweet,Telephone Ring,Helicopter,Applause,Gunshot").split(",");
+
+/* ============================================================
+   MIDI parsing
+   ============================================================ */
+function parseMidi(buf){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  const tag = o => String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);
+  if(u8.length < 14 || tag(0) !== "MThd")
+    throw new Error("That is not a MIDI file: the MThd chunk is missing.");
+
+  const hdrLen = dv.getUint32(4);
+  const format = dv.getUint16(8);
+  const division = dv.getInt16(12);
+  let ppqn, smpte = false;
+  if(division > 0){ ppqn = division; }
+  else { smpte = true; ppqn = (-(division >> 8)) * (division & 0xFF) || 480; }
+
+  let p = 8 + hdrLen;
+  const tracks = [];
+
+  while(p + 8 <= u8.length){
+    const id = tag(p), len = dv.getUint32(p + 4);
+    p += 8;
+    if(id !== "MTrk"){ p += len; continue; }
+    const end = Math.min(p + len, u8.length);
+    tracks.push(readTrackEvents(u8, p, end));
+    p = end;
+  }
+  if(!tracks.length) throw new Error("The file has no MTrk track chunks.");
+  return { format, ppqn, smpte, tracks };
+}
+
+function readTrackEvents(u8, p, end){
+  const ev = [];
+  let tick = 0, running = 0;
+  const vlq = () => { let v = 0, b; do { b = u8[p++]; v = (v << 7) | (b & 0x7F); } while(b & 0x80 && p < end); return v; };
+
+  while(p < end){
+    tick += vlq();
+    if(p >= end) break;
+    let status = u8[p];
+    if(status & 0x80){ p++; if(status < 0xF0) running = status; }
+    else status = running;
+    if(!status) break;
+
+    const hi = status & 0xF0, ch = status & 0x0F;
+    if(hi === 0x80){ const n = u8[p++], v = u8[p++]; ev.push({tick, type:"off", ch, n, v}); }
+    else if(hi === 0x90){ const n = u8[p++], v = u8[p++]; ev.push({tick, type: v ? "on" : "off", ch, n, v}); }
+    else if(hi === 0xA0){ p += 2; }
+    else if(hi === 0xB0){ const c = u8[p++], v = u8[p++]; ev.push({tick, type:"cc", ch, c, v}); }
+    else if(hi === 0xC0){ ev.push({tick, type:"prog", ch, v:u8[p++]}); }
+    else if(hi === 0xD0){ p += 1; }
+    else if(hi === 0xE0){ const lo = u8[p++], hh = u8[p++]; ev.push({tick, type:"bend", ch, v:((hh << 7) | lo) - 8192}); }
+    else if(status === 0xFF){
+      running = 0;
+      const m = u8[p++], len = vlq();
+      const data = u8.subarray(p, p + len); p += len;
+      const text = () => new TextDecoder("utf-8",{fatal:false}).decode(data).trim();
+      if(m === 0x51 && len >= 3) ev.push({tick, type:"tempo", us:(data[0]<<16)|(data[1]<<8)|data[2]});
+      else if(m === 0x58 && len >= 2) ev.push({tick, type:"timesig", num:data[0], den:1 << data[1]});
+      else if(m === 0x03) ev.push({tick, type:"name", text:text()});
+      else if(m === 0x01 || m === 0x05 || m === 0x06) ev.push({tick, type:"marker", text:text()});
+      else if(m === 0x2F) break;
+    }
+    else if(status === 0xF0 || status === 0xF7){ running = 0; const len = vlq(); p += len; }
+    else break;
+  }
+  return ev;
+}
+
+/* ============================================================
+   Byte assembler with 24-bit label fixups
+   ============================================================ */
+class Asm{
+  constructor(){ this.b = []; this.labels = Object.create(null); this.fix = []; }
+  get len(){ return this.b.length; }
+  u8(v){ this.b.push(v & 0xFF); return this; }
+  s8(v){ return this.u8(v < 0 ? v + 256 : v); }
+  u16(v){ this.b.push(v & 0xFF, (v >> 8) & 0xFF); return this; }
+  u24(v){ this.b.push(v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF); return this; }
+  vlq(v){
+    v = Math.max(0, Math.round(v));
+    const out = [v & 0x7F];
+    v = Math.floor(v / 128);
+    while(v > 0){ out.unshift((v & 0x7F) | 0x80); v = Math.floor(v / 128); }
+    for(const x of out) this.b.push(x);
+    return this;
+  }
+  label(name){ this.labels[name] = this.b.length; return this; }
+  ref24(name){ this.fix.push({at:this.b.length, name}); this.b.push(0,0,0); return this; }
+  resolve(){
+    for(const f of this.fix){
+      const t = this.labels[f.name];
+      if(t === undefined) throw new Error("Unresolved label " + f.name);
+      this.b[f.at] = t & 0xFF;
+      this.b[f.at+1] = (t >> 8) & 0xFF;
+      this.b[f.at+2] = (t >> 16) & 0xFF;
+    }
+    return new Uint8Array(this.b);
+  }
+}
+
+/* ============================================================
+   MIDI -> SSEQ translation
+   ============================================================ */
+function buildSseq(midi, cfg, report){
+  /* ---- tempo map ---- */
+  let tempos = [];
+  for(const tr of midi.tracks) for(const e of tr) if(e.type === "tempo")
+    tempos.push({tick:e.tick, bpm:60000000 / Math.max(1, e.us)});
+  tempos.sort((a,b) => a.tick - b.tick);
+  tempos = tempos.filter((t,i) => i === 0 || Math.abs(t.bpm - tempos[i-1].bpm) > 0.01 || t.tick !== tempos[i-1].tick);
+  if(!tempos.length || tempos[0].tick > 0) tempos.unshift({tick:0, bpm:120});
+
+  /* ---- tick multiplier keeps BPM inside the player's range ---- */
+  let maxBpm = 0, minBpm = Infinity;
+  for(const t of tempos){ if(t.bpm > maxBpm) maxBpm = t.bpm; if(t.bpm < minBpm) minBpm = t.bpm; }
+  let mul = cfg.tickMul;
+  if(!mul){ mul = 1; while(maxBpm / mul > MAX_BPM && mul < 8) mul *= 2; }
+  if(maxBpm / mul > MAX_BPM)
+    report.warn(`Fastest tempo is ${maxBpm.toFixed(1)} BPM; even at ${mul}x it exceeds the 240 BPM ceiling and will play slow.`);
+  if(minBpm / mul < 1)
+    report.warn(`Slowest tempo becomes under 1 BPM at ${mul}x. Force a smaller tick multiplier.`);
+  if(mul > 1) report.info(`Tick multiplier ${mul}x: ${BASE_TPQN * mul} ticks per quarter, tempo divided by ${mul}. Real timing is unchanged.`);
+
+  const tpqn = BASE_TPQN * mul;
+  const toTick = mt => Math.round(mt * tpqn / midi.ppqn);
+
+  /* ---- time signature, for rounding the loop end ---- */
+  let tsNum = 4, tsDen = 4;
+  outer: for(const tr of midi.tracks) for(const e of tr) if(e.type === "timesig"){ tsNum = e.num || 4; tsDen = e.den || 4; break outer; }
+  const barTicks = Math.max(1, Math.round(tpqn * 4 * tsNum / tsDen));
+
+  /* ---- loop point ---- */
+  let loopMidiTick = null;
+  if(cfg.loopMode === "marker"){
+    const needle = (cfg.loopMarker || "loop").toLowerCase();
+    let best = null;
+    for(const tr of midi.tracks) for(const e of tr)
+      if(e.type === "marker" && e.text && e.text.toLowerCase().includes(needle))
+        if(best === null || e.tick < best) best = e.tick;
+    if(best === null){
+      report.warn(`No marker containing "${cfg.loopMarker}" found. Looping the whole sequence instead.`);
+      loopMidiTick = 0;
+    } else {
+      loopMidiTick = best;
+      report.ok(`Loop marker found at MIDI tick ${best}.`);
+    }
+  } else if(cfg.loopMode === "whole") loopMidiTick = 0;
+  else if(cfg.loopMode === "tick") loopMidiTick = Math.max(0, cfg.loopTick|0);
+
+  /* ---- group events into output tracks ---- */
+  const groups = new Map();
+  const trackNames = midi.tracks.map(tr => {
+    const n = tr.find(e => e.type === "name");
+    return n && n.text ? n.text : "";
+  });
+
+  midi.tracks.forEach((tr, ti) => {
+    for(const e of tr){
+      if(!["on","off","cc","prog","bend"].includes(e.type)) continue;
+      const key = cfg.groupBy === "track" ? "t" + ti : "c" + e.ch;
+      if(!groups.has(key)) groups.set(key, {
+        key, ch:e.ch, midiTrack:ti,
+        name: trackNames[ti] || (cfg.groupBy === "track" ? "Track " + ti : "Channel " + (e.ch + 1)),
+        events:[], notes:[], prog:0, hasProg:false
+      });
+      const g = groups.get(key);
+      if(e.type === "prog" && !g.hasProg){ g.prog = e.v; g.hasProg = true; }
+      g.events.push(e);
+      if(cfg.groupBy === "track" && e.ch !== g.ch) g.mixed = true;
+    }
+  });
+
+  /* ---- pair note on/off into duration-carrying notes ---- */
+  let unclosed = 0;
+  for(const g of groups.values()){
+    const open = new Map();          // note number -> stack of pending starts
+    for(const e of g.events){
+      if(e.type === "on"){
+        if(!open.has(e.n)) open.set(e.n, []);
+        open.get(e.n).push({start:e.tick, vel:e.v});
+      } else if(e.type === "off"){
+        const st = open.get(e.n);
+        if(st && st.length){
+          const s = st.shift();
+          g.notes.push({start:toTick(s.start), end:Math.max(toTick(s.start) + 1, toTick(e.tick)), key:e.n, vel:s.vel});
+        }
+      }
+    }
+    for(const [n, st] of open) for(const s of st){          // note never released
+      unclosed++;
+      g.notes.push({start:toTick(s.start), end:toTick(s.start) + tpqn, key:n, vel:s.vel});
+    }
+    g.notes.sort((a,b) => a.start - b.start || b.vel - a.vel);
+  }
+  if(unclosed) report.warn(`${unclosed} note${unclosed>1?"s":""} had no note-off and was given a one-quarter-note length.`);
+
+  /* ---- drop empty groups, cap at 16, order by channel ---- */
+  let list = [...groups.values()].filter(g => g.notes.length);
+  if(!list.length) throw new Error("No playable notes were found in this MIDI file.");
+  list.sort((a,b) => a.ch - b.ch || a.midiTrack - b.midiTrack);
+  const cut = list.slice(MAX_TRACKS);
+  list = list.slice(0, MAX_TRACKS);
+  for(const g of cut) g.dropped = true;
+  if(cut.length) report.warn(`${cut.length} source track${cut.length>1?"s":""} past the 16-track limit were left out: ${cut.map(g=>g.name).join(", ")}.`);
+
+  /* ---- global polyphony limit ---- */
+  const allNotes = [];
+  list.forEach((g, gi) => g.notes.forEach(n => { n.g = gi; allNotes.push(n); }));
+  allNotes.sort((a,b) => a.start - b.start);
+  let stolen = 0, active = [];
+  for(const n of allNotes){
+    active = active.filter(a => a.end > n.start && !a.cut);
+    if(active.length >= cfg.poly){
+      let worst = n, wi = -1;
+      active.forEach((a, i) => { if(a.vel < worst.vel){ worst = a; wi = i; } });
+      if(wi === -1){ n.cut = true; }                       // incoming note is the quietest
+      else { active[wi].end = n.start; active[wi].truncated = true; active.splice(wi,1); active.push(n); }
+      stolen++;
+    } else active.push(n);
+  }
+  for(const g of list) g.notes = g.notes.filter(n => !n.cut && n.end > n.start);
+  if(stolen) report.warn(`Polyphony cap of ${cfg.poly} hit ${stolen} time${stolen>1?"s":""}: quietest voices were shortened or dropped.`);
+
+  /* ---- per-track timed event lists ---- */
+  const PRI = {tempo:0, instr:1, ctrl:2, note:3};
+  let endTick = 0;
+  list.forEach((g, gi) => {
+    const isDrum = g.ch === 9;
+    g.isDrum = isDrum;
+    g.instr = cfg.instrFor(g);
+    g.vol = 127; g.pan = 64;
+    g.timed = [];
+    for(const n of g.notes){
+      let key = isDrum ? n.key + cfg.drumShift : n.key;
+      key = Math.max(0, Math.min(127, key));
+      g.timed.push({t:n.start, p:PRI.note, kind:"note", key, vel:Math.max(1, Math.min(127, n.vel)), dur:Math.max(1, n.end - n.start)});
+      endTick = Math.max(endTick, n.end);
+    }
+    let lastBend = null;
+    const lastCC = new Map();
+    for(const e of g.events){
+      const t = toTick(e.tick);
+      if(e.type === "prog"){
+        if(t > 0) g.timed.push({t, p:PRI.instr, kind:"instr", v:cfg.instrForProgram(e.v, isDrum)});
+      } else if(e.type === "cc" && cfg.sendCC){
+        const map = {7:OP.VOL, 11:OP.VOL2, 10:OP.PAN, 1:OP.MOD_DEPTH};
+        const op = map[e.c]; if(op === undefined) continue;
+        const v = Math.max(0, Math.min(127, e.v));
+        if(lastCC.get(e.c) === v) continue;
+        lastCC.set(e.c, v);
+        if(t === 0){ if(e.c === 7) g.vol = v; else if(e.c === 10) g.pan = v; else g.timed.push({t, p:PRI.ctrl, kind:"op1", op, v}); }
+        else g.timed.push({t, p:PRI.ctrl, kind:"op1", op, v});
+      } else if(e.type === "bend" && cfg.sendBend){
+        const v = Math.max(-64, Math.min(63, Math.round(e.v / 8192 * 63)));
+        if(v === lastBend) continue;
+        lastBend = v;
+        g.timed.push({t, p:PRI.ctrl, kind:"bend", v});
+      }
+    }
+    if(gi === 0) for(const tp of tempos)
+      g.timed.push({t:toTick(tp.tick), p:PRI.tempo, kind:"tempo", v:Math.max(1, Math.min(MAX_BPM, Math.round(tp.bpm / mul)))});
+    g.timed.sort((a,b) => a.t - b.t || a.p - b.p);
+    for(const e of g.timed) if(e.t > endTick) endTick = e.t;
+  });
+
+  if(cfg.roundBar) endTick = Math.ceil(endTick / barTicks) * barTicks;
+  const loopTick = loopMidiTick === null ? null : Math.min(toTick(loopMidiTick), endTick);
+
+  /* ---- emit ---- */
+  const a = new Asm();
+  const n = list.length;
+  if(n > 1){
+    a.u8(OP.ALLOC_TRACKS).u16((1 << n) - 1);
+    for(let i = 1; i < n; i++) a.u8(OP.OPEN_TRACK).u8(i).ref24("trk" + i);
+  }
+  list.forEach((g, i) => {
+    a.label("trk" + i);
+    a.u8(OP.NOTE_WAIT).u8(0);                    // notes must not block, so chords can stack
+    a.u8(OP.PRIORITY).u8(64);
+    a.u8(OP.BEND_RANGE).u8(cfg.bendRange);
+    a.u8(OP.VOL).u8(g.vol);
+    a.u8(OP.PAN).u8(g.pan);
+    a.u8(OP.INSTR).vlq(g.instr);
+
+    let cur = 0, placed = false;
+    const wait = to => { if(to > cur){ a.u8(OP.WAIT).vlq(to - cur); cur = to; } };
+    const mark = () => { if(!placed && loopTick !== null){ wait(loopTick); a.label("loop" + i); placed = true; } };
+
+    for(const e of g.timed){
+      if(loopTick !== null && !placed && e.t >= loopTick) mark();
+      wait(e.t);
+      if(e.kind === "note"){ a.u8(e.key).u8(e.vel).vlq(e.dur); }
+      else if(e.kind === "op1"){ a.u8(e.op).u8(e.v); }
+      else if(e.kind === "bend"){ a.u8(OP.BEND).s8(e.v); }
+      else if(e.kind === "instr"){ a.u8(OP.INSTR).vlq(e.v); }
+      else if(e.kind === "tempo"){ a.u8(OP.TEMPO).u16(e.v); }
+    }
+    if(loopTick !== null && !placed) mark();
+    wait(endTick);                                // keep every track in step before looping
+    if(loopTick !== null) a.u8(OP.JUMP).ref24("loop" + i);
+    else a.u8(OP.FIN);
+  });
+
+  const seq = a.resolve();
+  return {seq, tracks:list, cut, endTick, loopTick, tpqn, mul, barTicks, tempos, unclosed, stolen};
+}
+
+/* ---- wrap sequence bytes in the SSEQ container ---- */
+function wrapSseq(seq){
+  const padded = (4 - (seq.length % 4)) % 4;
+  const blockSize = 0x0C + seq.length + padded;
+  const total = 0x10 + blockSize;
+  const out = new Uint8Array(total);
+  const dv = new DataView(out.buffer);
+  const put = (o, s) => { for(let i = 0; i < s.length; i++) out[o+i] = s.charCodeAt(i); };
+  put(0, "SSEQ");
+  dv.setUint16(4, 0xFEFF, true);   // byte order mark
+  dv.setUint16(6, 0x0100, true);   // version
+  dv.setUint32(8, total, true);
+  dv.setUint16(12, 0x10, true);    // header size
+  dv.setUint16(14, 1, true);       // block count
+  put(0x10, "DATA");
+  dv.setUint32(0x14, blockSize, true);
+  dv.setUint32(0x18, SEQ_DATA_START, true);
+  out.set(seq, SEQ_DATA_START);
+  return out;
+}
+
+/* ============================================================
+   Disassembler, used to read our own output back
+   ============================================================ */
+const OPNAME = (()=>{ const m={}; for(const k in OP) m[OP[k]] = k.toLowerCase(); return m; })();
+
+function disassemble(seq, labels){
+  const lines = [];
+  const rev = {};
+  for(const k in labels) (rev[labels[k]] = rev[labels[k]] || []).push(k);
+  let p = 0, bad = 0;
+  const vlq = () => { let v = 0, b; do { b = seq[p++]; v = v * 128 + (b & 0x7F); } while(b & 0x80 && p < seq.length); return v; };
+
+  while(p < seq.length){
+    const at = p;
+    if(rev[at]) for(const l of rev[at]) lines.push({label:l});
+    const c = seq[p++];
+    let text;
+    if(c < 0x80){ const vel = seq[p++], d = vlq(); text = ["note", `key=${c} vel=${vel} dur=${d}`]; }
+    else switch(c){
+      case OP.WAIT: text = ["wait", String(vlq())]; break;
+      case OP.INSTR: text = ["instr", String(vlq())]; break;
+      case OP.OPEN_TRACK: { const t = seq[p++], o = seq[p] | (seq[p+1]<<8) | (seq[p+2]<<16); p += 3; text = ["open_track", `track=${t} -> 0x${o.toString(16)}`]; break; }
+      case OP.JUMP: case OP.CALL: { const o = seq[p] | (seq[p+1]<<8) | (seq[p+2]<<16); p += 3; text = [OPNAME[c], `0x${o.toString(16)}`]; break; }
+      case OP.ALLOC_TRACKS: { const m = seq[p] | (seq[p+1]<<8); p += 2; text = ["alloc_tracks", "0b" + m.toString(2)]; break; }
+      case OP.TEMPO: case OP.MOD_DELAY: case OP.SWEEP_PITCH: { const v = seq[p] | (seq[p+1]<<8); p += 2; text = [OPNAME[c], String(v)]; break; }
+      case OP.FIN: case OP.RETURN: case OP.LOOP_END: text = [OPNAME[c], ""]; break;
+      case OP.BEND: case OP.TRANSPOSE: { const v = seq[p++]; text = [OPNAME[c], String(v > 127 ? v - 256 : v)]; break; }
+      default:
+        if(c >= 0xC0 && c <= 0xD6){ text = [OPNAME[c] || "op_" + c.toString(16), String(seq[p++])]; }
+        else { text = ["??", "0x" + c.toString(16)]; bad++; }
+    }
+    lines.push({at, mn:text[0], arg:text[1], raw:[...seq.slice(at, p)]});
+    if(bad > 8) break;
+  }
+  return {lines, bad};
+}
+
+function byteClass(seq){
+  /* classify every byte as opcode-or-argument for the tape */
+  const cls = new Array(seq.length).fill("b-arg");
+  let p = 0;
+  const skipVlq = () => { let b; do { b = seq[p++]; } while(b & 0x80 && p < seq.length); };
+  const mark = (from, k) => { cls[from] = k; };
+  while(p < seq.length){
+    const at = p, c = seq[p++];
+    if(c < 0x80){ mark(at, "b-note"); p++; skipVlq(); }
+    else if(c === OP.WAIT){ mark(at, "b-wait"); skipVlq(); }
+    else if(c === OP.INSTR){ mark(at, "b-inst"); skipVlq(); }
+    else if(c === OP.OPEN_TRACK){ mark(at, "b-struct"); p += 4; }
+    else if(c === OP.JUMP || c === OP.CALL){ mark(at, "b-struct"); p += 3; }
+    else if(c === OP.ALLOC_TRACKS){ mark(at, "b-struct"); p += 2; }
+    else if(c === OP.FIN || c === OP.RETURN || c === OP.LOOP_END){ mark(at, "b-struct"); }
+    else if(c === OP.TEMPO || c === OP.MOD_DELAY || c === OP.SWEEP_PITCH){ mark(at, "b-ctrl"); p += 2; }
+    else if(c >= 0xC0 && c <= 0xD6){ mark(at, "b-ctrl"); p++; }
+    else { mark(at, "b-struct"); }
+  }
+  return cls;
+}
+
+/* ============================================================
+   SDAT reader and patcher
+   ============================================================ */
+function parseSdat(buf){
+  const u8 = new Uint8Array(buf), dv = new DataView(buf);
+  const tag = o => String.fromCharCode(u8[o],u8[o+1],u8[o+2],u8[o+3]);
+  if(tag(0) !== "SDAT") throw new Error("Not an SDAT archive.");
+  const blk = {};
+  ["symb","info","fat","file"].forEach((k, i) => {
+    blk[k] = {off:dv.getUint32(0x10 + i*8, true), size:dv.getUint32(0x14 + i*8, true)};
+  });
+
+  /* symbol names */
+  const names = {seq:[], bank:[], wavearc:[]};
+  if(blk.symb.off){
+    const S = blk.symb.off;
+    const listAt = i => {
+      const rel = dv.getUint32(S + 8 + i*4, true);
+      if(!rel) return [];
+      const base = S + rel, count = dv.getUint32(base, true), out = [];
+      for(let j = 0; j < count; j++){
+        const o = dv.getUint32(base + 4 + j*4, true);
+        if(!o){ out.push(""); continue; }
+        let q = S + o, s = "";
+        while(u8[q]) s += String.fromCharCode(u8[q++]);
+        out.push(s);
+      }
+      return out;
+    };
+    names.seq = listAt(0); names.bank = listAt(2); names.wavearc = listAt(3);
+  }
+
+  /* info records */
+  const I = blk.info.off;
+  const infoList = i => {
+    const rel = dv.getUint32(I + 8 + i*4, true);
+    if(!rel) return [];
+    const base = I + rel, count = dv.getUint32(base, true), out = [];
+    for(let j = 0; j < count; j++){
+      const o = dv.getUint32(base + 4 + j*4, true);
+      out.push(o ? I + o : null);
+    }
+    return out;
+  };
+  const seqs = infoList(0).map((o, i) => o ? {
+    index:i, name:names.seq[i] || "SEQ_" + i,
+    fileId:dv.getUint16(o, true), bank:dv.getUint16(o + 2, true), vol:u8[o + 4]
+  } : null).filter(Boolean);
+  const banks = infoList(2).map((o, i) => o ? {
+    index:i, name:names.bank[i] || "BANK_" + i,
+    fileId:dv.getUint16(o, true),
+    waves:[0,1,2,3].map(w => dv.getUint16(o + 2 + w*2, true))
+  } : null).filter(Boolean);
+
+  /* file allocation table */
+  const F = blk.fat.off, fatCount = dv.getUint32(F + 8, true), fat = [];
+  for(let i = 0; i < fatCount; i++){
+    const r = F + 12 + i*16;
+    fat.push({rec:r, off:dv.getUint32(r, true), size:dv.getUint32(r + 4, true)});
+  }
+  return {buf, u8, dv, blk, seqs, banks, fat, names};
+}
+
+function parseSbnk(u8, off, size){
+  /* header 0x10 + DATA magic/size 0x08 + 32 reserved + u32 count = 0x3C */
+  if(size < 0x40 || off + size > u8.length) return null;
+  const dv = new DataView(u8.buffer, u8.byteOffset + off, size);
+  const tag = String.fromCharCode(u8[off],u8[off+1],u8[off+2],u8[off+3]);
+  if(tag !== "SBNK") return null;
+  const count = dv.getUint32(0x38, true);
+  const TYPE = {0:"empty", 1:"PCM", 2:"PSG square", 3:"PSG noise", 4:"direct PCM", 5:"null",
+                16:"drum set", 17:"key split"};
+  const insts = [];
+  for(let i = 0; i < count && 0x3C + i*4 + 4 <= size; i++){
+    const t = dv.getUint8(0x3C + i*4);
+    insts.push({i, type:t, label:TYPE[t] || "type " + t});
+  }
+  return {count, insts};
+}
+
+function patchSdat(sdat, fileId, bytes){
+  /* rebuild the FILE block so the replacement can change size */
+  const {u8, dv, blk, fat} = sdat;
+  const fileBase = blk.file.off;
+  const headLen = 16;                              // FILE magic, size, count, reserved
+  const count = dv.getUint32(fileBase + 8, true);
+  if(fileId >= fat.length) throw new Error("File id " + fileId + " is outside the archive's FAT.");
+
+  const blobs = fat.map((f, i) => i === fileId ? bytes : u8.subarray(f.off, f.off + f.size));
+  const pad = n => (32 - (n % 32)) % 32;           // SDAT files sit on 32-byte boundaries
+
+  let cursor = headLen, layout = [];
+  for(const b of blobs){ layout.push(cursor); cursor += b.length + pad(b.length); }
+  const newFileSize = cursor;
+  const total = fileBase + newFileSize;
+
+  const out = new Uint8Array(total);
+  out.set(u8.subarray(0, fileBase), 0);            // header + SYMB + INFO + FAT unchanged in size
+  const odv = new DataView(out.buffer);
+
+  out.set(u8.subarray(fileBase, fileBase + headLen), fileBase);
+  odv.setUint32(fileBase + 4, newFileSize, true);
+  odv.setUint32(fileBase + 8, count, true);
+  blobs.forEach((b, i) => out.set(b, fileBase + layout[i]));
+
+  fat.forEach((f, i) => {                          // FAT offsets are absolute
+    odv.setUint32(f.rec, fileBase + layout[i], true);
+    odv.setUint32(f.rec + 4, blobs[i].length, true);
+  });
+  odv.setUint32(8, total, true);                   // SDAT total size
+  odv.setUint32(0x2C, newFileSize, true);          // FILE block size (0x28 holds its offset)
+  return out;
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const state = {midi:null, midiName:"", sdat:null, sbnk:null, groups:[], overrides:{}, progMap:{}, drumInstr:0, out:null, built:null};
+
+/* ---- file pickers ---- */
+$("drop").addEventListener("click", () => $("midiFile").click());
+$("drop").addEventListener("keydown", e => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); $("midiFile").click(); } });
+["dragenter","dragover"].forEach(t => $("drop").addEventListener(t, e => { e.preventDefault(); $("drop").classList.add("hot"); }));
+["dragleave","drop"].forEach(t => $("drop").addEventListener(t, e => { e.preventDefault(); $("drop").classList.remove("hot"); }));
+$("drop").addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if(f) loadMidi(f); });
+$("midiFile").addEventListener("change", e => { const f = e.target.files[0]; if(f) loadMidi(f); });
+$("pickSdat").addEventListener("click", () => $("sdatFile").click());
+$("sdatFile").addEventListener("change", e => { const f = e.target.files[0]; if(f) loadSdat(f); });
+$("importMap").addEventListener("click", () => $("mapFile").click());
+$("mapFile").addEventListener("change", e => { const f = e.target.files[0]; if(f) loadMapping(f); });
+$("loopMode").addEventListener("change", () => {
+  const m = $("loopMode").value;
+  $("markerField").classList.toggle("hidden", m !== "marker");
+  $("tickField").classList.toggle("hidden", m !== "tick");
+});
+$("convert").addEventListener("click", runConvert);
+$("exportMap").addEventListener("click", saveMapping);
+$("bankSel").addEventListener("change", () => { loadSelectedBank(); renderTracks(); });
+
+async function loadMidi(file){
+  try{
+    const buf = await file.arrayBuffer();
+    state.midi = parseMidi(buf);
+    state.midiName = file.name.replace(/\.midi?$/i, "");
+    const m = state.midi;
+    $("midiInfo").classList.remove("hidden");
+    $("midiInfo").innerHTML =
+      `<span class="tag">file</span>${esc(file.name)}` +
+      `<span class="tag">format</span>${m.format}` +
+      `<span class="tag">chunks</span>${m.tracks.length}` +
+      `<span class="tag">division</span>${m.ppqn} ppqn${m.smpte ? " (SMPTE, approximated)" : ""}` +
+      `<span class="tag">size</span>${(buf.byteLength/1024).toFixed(1)} KB`;
+    if(m.format === 0) $("groupBy").value = "channel";
+    else if($("groupBy").value === "channel" && m.tracks.length > 2) $("groupBy").value = "track";
+    previewGroups();
+    $("trackPanel").classList.remove("hidden");
+    $("optPanel").classList.remove("hidden");
+  }catch(err){ alert("Could not read that MIDI file. " + err.message); }
+}
+
+async function loadSdat(file){
+  try{
+    const buf = await file.arrayBuffer();
+    state.sdat = parseSdat(buf);
+    const s = state.sdat;
+    $("sdatInfo").classList.remove("hidden");
+    $("sdatInfo").innerHTML =
+      `<span class="tag">archive</span>${esc(file.name)}` +
+      `<span class="tag">sequences</span>${s.seqs.length}` +
+      `<span class="tag">banks</span>${s.banks.length}` +
+      `<span class="tag">files</span>${s.fat.length}`;
+    fill($("bankSel"), s.banks.map(b => ({v:b.index, t:`${b.index} · ${b.name}`})));
+    fill($("targetSel"), s.seqs.map(q => ({v:q.index, t:`${q.name} (bank ${q.bank})`})));
+    $("bankSel").disabled = false; $("targetSel").disabled = false;
+    loadSelectedBank();
+    renderTracks();
+  }catch(err){ alert("Could not read that SDAT. " + err.message); }
+}
+
+function loadSelectedBank(){
+  state.sbnk = null;
+  if(!state.sdat) return;
+  const bi = +$("bankSel").value;
+  const bank = state.sdat.banks.find(b => b.index === bi);
+  if(!bank) return;
+  const f = state.sdat.fat[bank.fileId];
+  if(!f) return;
+  state.sbnk = parseSbnk(state.sdat.u8, f.off, f.size);
+  if(state.sbnk){
+    const used = state.sbnk.insts.filter(i => i.type !== 0 && i.type !== 5).length;
+    $("sdatInfo").insertAdjacentHTML("beforeend",
+      `<span class="tag">bank ${esc(bank.name)}</span>${used} of ${state.sbnk.count} slots filled`);
+  }
+}
+
+function fill(sel, items){
+  sel.innerHTML = items.map(i => `<option value="${i.v}">${esc(i.t)}</option>`).join("") || "<option>none</option>";
+}
+function esc(s){ return String(s).replace(/[<>&"]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;",'"':"&quot;"}[c])); }
+
+/* ---- track preview and mapping table ---- */
+function previewGroups(){
+  const m = state.midi; if(!m) return;
+  const by = $("groupBy").value;
+  const map = new Map();
+  const names = m.tracks.map(tr => { const n = tr.find(e => e.type === "name"); return n && n.text ? n.text : ""; });
+  m.tracks.forEach((tr, ti) => {
+    for(const e of tr){
+      const key = by === "track" ? "t" + ti : "c" + e.ch;
+      if(e.type === "prog"){
+        const g = map.get(key);
+        if(g && !g.hasProg){ g.prog = e.v; g.hasProg = true; }
+        continue;
+      }
+      if(e.type !== "on" || !e.v) continue;
+      if(!map.has(key)) map.set(key, {key, ch:e.ch, midiTrack:ti, name:names[ti] || (by === "track" ? "Track " + ti : "Channel " + (e.ch+1)), count:0, prog:0, hasProg:false});
+      map.get(key).count++;
+    }
+  });
+  /* a program change usually precedes the first note, so make a second pass for those groups */
+  m.tracks.forEach((tr, ti) => {
+    for(const e of tr){
+      if(e.type !== "prog") continue;
+      const g = map.get(by === "track" ? "t" + ti : "c" + e.ch);
+      if(g && !g.hasProg){ g.prog = e.v; g.hasProg = true; }
+    }
+  });
+  state.groups = [...map.values()].sort((a,b) => a.ch - b.ch || a.midiTrack - b.midiTrack);
+  renderTracks();
+}
+$("groupBy").addEventListener("change", previewGroups);
+
+function defaultInstr(g){
+  if(g.key in state.overrides) return state.overrides[g.key];
+  if(g.ch === 9) return state.drumInstr;
+  if(g.prog in state.progMap) return state.progMap[g.prog];
+  return g.prog;
+}
+
+function renderTracks(){
+  const tb = $("trackTable").querySelector("tbody");
+  tb.innerHTML = state.groups.map((g, i) => {
+    const over = MAX_TRACKS <= i;
+    const instr = defaultInstr(g);
+    let slot = '<span class="chip cut">unknown</span>';
+    if(state.sbnk){
+      const rec = state.sbnk.insts[instr];
+      slot = rec && rec.type !== 0 && rec.type !== 5
+        ? `<span class="chip">${esc(rec.label)}</span>`
+        : `<span class="chip cut">empty slot</span>`;
+    }
+    return `<tr class="${over ? "dropped" : ""}">
+      <td class="num">${over ? "&mdash;" : i}</td>
+      <td class="name">${esc(g.name)}${g.ch === 9 ? ' <span class="chip drum">drums</span>' : ""}</td>
+      <td class="num">${g.ch + 1}</td>
+      <td class="num" title="${esc(GM_NAMES[g.prog] || "")}">${g.prog}</td>
+      <td class="num"><input type="number" min="0" max="255" value="${instr}" data-k="${esc(g.key)}"></td>
+      <td class="num">127</td><td class="num">64</td>
+      <td class="num">${g.count}</td>
+      <td>${slot}</td></tr>`;
+  }).join("");
+  tb.querySelectorAll("input[data-k]").forEach(inp => inp.addEventListener("change", () => {
+    state.overrides[inp.dataset.k] = Math.max(0, +inp.value | 0);
+    renderTracks();
+  }));
+}
+
+/* ---- mapping file ---- */
+function saveMapping(){
+  const doc = {version:1, note:"Indices are SBNK slots, not General MIDI programs.",
+    default:"passthrough", drumInstrument:state.drumInstr, programs:state.progMap, tracks:{}};
+  for(const g of state.groups) doc.tracks[g.key] = defaultInstr(g);
+  download(new Blob([JSON.stringify(doc, null, 2)], {type:"application/json"}), "mapping.json");
+}
+async function loadMapping(file){
+  try{
+    const doc = JSON.parse(await file.text());
+    state.progMap = doc.programs || {};
+    state.drumInstr = doc.drumInstrument | 0;
+    state.overrides = Object.assign({}, doc.tracks || {});
+    renderTracks();
+  }catch(err){ alert("That mapping file could not be read. " + err.message); }
+}
+
+/* ---- report helpers ---- */
+function makeReport(){
+  const items = [];
+  return {
+    items,
+    ok:m => items.push({k:"ok", m}), warn:m => items.push({k:"warn", m}),
+    err:m => items.push({k:"err", m}), info:m => items.push({k:"info", m})
+  };
+}
+
+/* ---- the button ---- */
+function runConvert(){
+  if(!state.midi) return;
+  const report = makeReport();
+  try{
+    const cfg = {
+      groupBy:$("groupBy").value,
+      tickMul:+$("tickMul").value,
+      poly:Math.max(1, Math.min(16, +$("poly").value)),
+      bendRange:Math.max(1, Math.min(24, +$("bendRange").value)),
+      drumShift:+$("drumShift").value | 0,
+      loopMode:$("loopMode").value,
+      loopMarker:$("loopMarker").value,
+      loopTick:+$("loopTick").value | 0,
+      roundBar:$("roundBar").checked,
+      sendCC:$("sendCC").checked,
+      sendBend:$("sendBend").checked,
+      instrFor:g => defaultInstr(g),
+      instrForProgram:(p, drum) => drum ? state.drumInstr : (p in state.progMap ? state.progMap[p] : p)
+    };
+    const built = buildSseq(state.midi, cfg, report);
+    const file = wrapSseq(built.seq);
+    state.built = built; state.out = file;
+
+    /* read our own bytes back */
+    const dis = disassemble(built.seq, {});
+    if(dis.bad) report.err(`${dis.bad} byte${dis.bad>1?"s":""} did not decode as a valid command. Do not ship this file.`);
+    else report.ok(`All ${built.seq.length} sequence bytes decoded cleanly into ${dis.lines.length} commands.`);
+
+    if(built.tempos.length > 1) report.info(`${built.tempos.length} tempo changes were written to track 0 as 0xE1 events.`);
+    if(built.loopTick !== null) report.ok(`Loop jumps back to tick ${built.loopTick}; every track ends at tick ${built.endTick}.`);
+    else report.info("No loop: each track ends with 0xFF.");
+    if(state.sbnk){
+      const bad = built.tracks.filter(g => { const r = state.sbnk.insts[g.instr]; return !r || r.type === 0 || r.type === 5; });
+      if(bad.length) report.warn(`${bad.length} track${bad.length>1?"s":""} point at an empty bank slot and will be silent: ${bad.map(g=>`${g.name} -> ${g.instr}`).join(", ")}.`);
+      else report.ok("Every track points at a filled slot in the selected bank.");
+    } else {
+      report.info("No SBNK loaded, so instrument indices were not checked against a real bank.");
+    }
+    report.info("Playback is the only real test. Try it in an SSEQ player or a DS emulator.");
+
+    renderReport(report, built, file);
+    renderTape(built.seq);
+    renderDisasm(built.seq, built.tracks.length);
+    $("dlSseq").disabled = false;
+    $("dlSdat").disabled = !state.sdat;
+  }catch(err){
+    report.err(err.message);
+    renderReport(report, null, null);
+  }
+}
+
+function renderReport(report, built, file){
+  $("reportPanel").classList.remove("hidden");
+  $("stats").innerHTML = built ? [
+    ["Tracks", built.tracks.length + " / 16"],
+    ["Notes", built.tracks.reduce((s,g) => s + g.notes.length, 0)],
+    ["Sequence bytes", built.seq.length],
+    ["File size", file.length + " B"],
+    ["Ticks per quarter", built.tpqn],
+    ["Length", built.endTick + " ticks"]
+  ].map(([l,v]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("") : "";
+  $("log").innerHTML = report.items.map(i => `<li class="${i.k}">${esc(i.m)}</li>`).join("");
+}
+
+function renderTape(seq){
+  $("tapePanel").classList.remove("hidden");
+  const cls = byteClass(seq);
+  const limit = Math.min(seq.length, 420);
+  const hex = b => b.toString(16).toUpperCase().padStart(2, "0");
+  $("tapeLine").innerHTML = Array.from(seq.subarray(0, limit)).map((b, i) =>
+    `<span class="byte ${cls[i]}" title="offset 0x${(i).toString(16).toUpperCase()}">${hex(b)}</span>`).join("");
+  $("tapeFoot").textContent =
+    `showing ${limit} of ${seq.length} sequence bytes · offsets are relative to 0x${SEQ_DATA_START.toString(16).toUpperCase()} in the file, which is what 0x93 and 0x94 targets are measured against`;
+}
+
+function renderDisasm(seq, nTracks){
+  $("disPanel").classList.remove("hidden");
+  const labels = {};
+  const dis = disassemble(seq, labels);
+  const hex = n => "0x" + n.toString(16).toUpperCase().padStart(4, "0");
+  const out = dis.lines.map(l => {
+    if(l.label) return `<span class="l">${esc(l.label)}:</span>`;
+    const raw = l.raw.map(b => b.toString(16).toUpperCase().padStart(2,"0")).join(" ");
+    return `<span class="o">${hex(l.at)}</span>  <span class="c">${raw.padEnd(14).slice(0,14)}</span>  ` +
+           `<span class="m">${esc(l.mn.padEnd(12))}</span>${esc(l.arg)}`;
+  });
+  $("disasm").innerHTML = out.join("\n");
+}
+
+/* ---- downloads ---- */
+$("dlSseq").addEventListener("click", () => {
+  if(!state.out) return;
+  download(new Blob([state.out], {type:"application/octet-stream"}), (state.midiName || "output") + ".sseq");
+});
+$("dlSdat").addEventListener("click", () => {
+  if(!state.out || !state.sdat) return;
+  try{
+    const si = +$("targetSel").value;
+    const target = state.sdat.seqs.find(q => q.index === si);
+    if(!target) throw new Error("Pick a sequence to overwrite first.");
+    const patched = patchSdat(state.sdat, target.fileId, state.out);
+    download(new Blob([patched], {type:"application/octet-stream"}), "sound_data.sdat");
+  }catch(err){ alert("Could not patch the archive. " + err.message); }
+});
+function download(blob, name){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+</script>
+</body>
+</html>
