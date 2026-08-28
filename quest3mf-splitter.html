@@ -1,0 +1,3576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pokémon Quest → 3MF Splitter</title>
+<style>
+  :root {
+    --bg: #0b1020; --panel: #141a2e; --panel2: #1b2340; --ink: #e8ecf6;
+    --dim: #9aa5c0; --accent: #ffd54f; --accent2: #b388ff; --ok: #7ee08a; --err: #ff8a80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+    padding: 1rem; max-width: 1100px; margin-inline: auto;
+  }
+  h1 { font-size: 1.3rem; margin: 0.2rem 0 0.2rem; color: var(--accent); }
+  .sub { color: var(--dim); margin-bottom: 1rem; font-size: 0.85rem; }
+  .cols { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
+  .col { flex: 1 1 340px; min-width: 320px; }
+  .panel { background: var(--panel); border-radius: 10px; padding: 0.9rem 1rem; margin-bottom: 1rem; }
+  .panel h2 { font-size: 0.95rem; margin: 0 0 0.6rem; color: var(--accent2); text-transform: uppercase; letter-spacing: 0.05em; }
+  #dropzone {
+    border: 2px dashed #3a4670; border-radius: 10px; padding: 1.4rem; text-align: center;
+    color: var(--dim); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  }
+  #dropzone.hover { border-color: var(--accent); background: rgba(255,213,79,0.06); color: var(--ink); }
+  #dex-search {
+    width: 100%; padding: 0.5rem 0.7rem; border-radius: 6px; border: 1px solid #3a4670;
+    background: var(--panel2); color: var(--ink); font-size: 0.95rem;
+  }
+  #dex-list { max-height: 230px; overflow-y: auto; margin-top: 0.5rem; border-radius: 6px; }
+  .dex-item { padding: 0.35rem 0.7rem; cursor: pointer; border-radius: 4px; }
+  .dex-item:hover { background: var(--panel2); }
+  .dex-item.sel { background: var(--accent2); color: #14161c; font-weight: 600; }
+  label.opt { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; color: var(--dim); }
+  label.opt input[type=number] { width: 5.5rem; padding: 0.25rem 0.4rem; border-radius: 4px; border: 1px solid #3a4670; background: var(--panel2); color: var(--ink); }
+  button {
+    background: var(--accent); color: #14161c; border: 0; border-radius: 6px; font-weight: 700;
+    padding: 0.5rem 1.1rem; cursor: pointer; font-size: 0.95rem;
+  }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.small { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+  button.ghost { background: var(--panel2); color: var(--ink); }
+  #log {
+    font: 12px/1.5 Consolas, monospace; background: #0d1226; border-radius: 8px;
+    padding: 0.6rem 0.8rem; max-height: 160px; overflow-y: auto; white-space: pre-wrap;
+  }
+  #log .err { color: var(--err); } #log .ok { color: var(--ok); } #log .dim { color: var(--dim); }
+  .card {
+    background: var(--panel2); border-radius: 8px; padding: 0.6rem 0.8rem; margin-bottom: 0.6rem;
+    display: flex; align-items: center; gap: 0.8rem; flex-wrap: wrap;
+  }
+  .card .name { font-weight: 700; }
+  .card .stats { color: var(--dim); font-size: 0.8rem; flex: 1 1 auto; }
+  .swatches { display: flex; gap: 2px; flex-wrap: wrap; max-width: 220px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.25); }
+  #preview-wrap { position: relative; }
+  #preview { width: 100%; height: 380px; background: #0d1226; border-radius: 10px; display: block; touch-action: none; }
+  #preview-label { position: absolute; top: 0.5rem; left: 0.8rem; color: var(--dim); font-size: 0.8rem; pointer-events: none; }
+  .hint { color: var(--dim); font-size: 0.78rem; margin-top: 0.4rem; }
+  a { color: var(--accent2); }
+  code { background: var(--panel2); padding: 0 3px; border-radius: 3px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<h1>Pokémon Quest → 3MF Splitter</h1>
+<div class="sub">Bakes each voxel face's texture color onto a watertight mesh, written both as a standard 3MF <code>colorgroup</code> (what Bambu Studio's "Standard 3MF Color Parsing" dialog reads) and as Bambu's per-triangle <code>paint_color</code>. Every model is audited for non-manifold edges before you can download it.
+<br><b>Split mode</b> additionally cuts the model into one solid part per color with snap-fit pegs and tenons, so each part prints in a single filament and the pieces push together. Every externally visible triangle is copied through byte-for-byte and checked — connectors are only ever cut into faces the original model already hid.</div>
+
+<div class="cols">
+  <div class="col">
+    <div class="panel">
+      <h2>Option 1 — Pick a model</h2>
+      <input id="dex-search" type="text" placeholder="Search 426 models… (e.g. Pikachu)" disabled>
+      <div id="dex-list"></div>
+      <label class="opt"><input type="checkbox" id="gh-shiny"> Shiny (separate model for base species, texture swap for pq-models)</label>
+      <button id="gh-convert" disabled>Convert selected</button>
+      <div class="hint" id="gh-status">Loading questdex from GitHub…</div>
+    </div>
+
+    <div class="panel">
+      <h2>Your model folder (no network)</h2>
+      <button id="lib-pick">Choose “Pokemon Quest 3D Models” folder…</button>
+      <input type="file" id="lib-input" webkitdirectory directory multiple style="display:none">
+      <div class="hint" id="lib-status">Not set — the list above will fall back to GitHub.</div>
+      <div class="hint">The 426-model index is built into this file, so search works offline.
+        Only the mesh files come from your folder; it is remembered between sessions.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Option 2 — Drop local files</h2>
+      <div id="dropzone">Drop a model folder here (or click to pick files)<br>
+        <span style="font-size:0.78rem">needs the .obj + .mtl + .png(s) together; multiple folders fine</span>
+      </div>
+      <input type="file" id="file-input" multiple style="display:none">
+    </div>
+
+    <div class="panel">
+      <h2>Options</h2>
+      <label class="opt">Target height <input type="number" id="opt-height" value="50" min="1" max="500" step="1"> mm (tallest axis after standing upright)</label>
+      <label class="opt">Merge colors closer than <input type="number" id="opt-merge" value="0" min="0" max="64" step="1"> (0–64 RGB distance, 0 = exact)</label>
+      <label class="opt">Max colors <input type="number" id="opt-maxcol" value="16" min="1" max="16" step="1"> (= filament slots, Bambu painting supports up to 16; extras merge into the nearest kept color)</label>
+      <label class="opt"><input type="checkbox" id="opt-alpha" checked> Omit fully transparent faces (fx/ghost-flame parts)</label>
+    </div>
+
+    <div class="panel">
+      <h2>Split into snap-together parts</h2>
+      <label class="opt"><input type="checkbox" id="opt-split"> Enable — one 3MF, one solid object per colored part</label>
+      <div id="split-opts" style="display:none">
+        <label class="opt">Group filaments within <input type="number" id="opt-grouptol" value="48" min="0" max="128" step="1"> RGB distance (collapses baked shading of one color)</label>
+        <label class="opt">Peg <input type="number" id="opt-pegw" value="2.4" min="0.8" max="12" step="0.1"> mm wide × <input type="number" id="opt-pegd" value="3" min="0.5" max="20" step="0.1"> mm deep</label>
+        <label class="opt">Fit clearance <input type="number" id="opt-clear" value="0.2" min="0" max="1" step="0.05"> mm</label>
+        <label class="opt">Min part thickness <input type="number" id="opt-minthick" value="2.5" min="0.4" max="20" step="0.1"> mm (thin details get a tenon to reach it)</label>
+        <label class="opt">Min feature width <input type="number" id="opt-minfeat" value="0.8" min="0.1" max="10" step="0.1"> mm (narrower stays fused + painted)</label>
+        <label class="opt">Joint depth <input type="number" id="opt-jointdepth" value="2.5" min="0.5" max="20" step="0.1"> mm (how far a part slots into the one behind it)</label>
+        <label class="opt">Merge pieces below <input type="number" id="opt-mergebelow" value="0" min="0" max="2000" step="5"> mm³ into the part behind them (0 = off)</label>
+        <label class="opt">Plate size <input type="number" id="opt-plate" value="256" min="50" max="600" step="1"> mm (for the grid layout)</label>
+        <div class="hint">A piece that is the same filament as whatever it sits on is <em>always</em> merged — splitting it would buy nothing and it would need a connector it has no room for. The threshold above merges further pieces by size: raise it until the fiddly bits stop being separate. Merged geometry keeps its own paint colour, so on an AMS machine the detail still prints in its own colour.</div>
+        <div class="hint">Every externally visible triangle is copied through byte-for-byte. Pegs and pockets are only ever cut into faces the original model already hid.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h2>Preview</h2>
+      <div id="preview-wrap">
+        <canvas id="preview"></canvas>
+        <div id="preview-label">— nothing converted yet —</div>
+      </div>
+      <label class="opt">Explode preview <input type="range" id="opt-explode" min="0" max="15" step="0.5" value="0" style="flex:1"></label>
+      <div class="hint">Drag to rotate · wheel to zoom. Colors shown are the exact baked per-face colors going into the 3MF. In split mode the slider pulls the parts apart so you can see the seams.</div>
+      <div class="hint">Load at least as many filaments in Bambu Studio as the model has colors <em>before</em> importing, or the color-mapping dialog will have nothing to map to.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Converted models</h2>
+      <div id="cards"></div>
+      <button id="dl-all" class="ghost" style="display:none">Download all as .zip</button>
+    </div>
+
+    <div class="panel">
+      <h2>Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================ utils */
+const $ = (s) => document.querySelector(s);
+const logEl = $("#log");
+function log(msg, cls) {
+  const d = document.createElement("div");
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+  if (cls === "err") console.error(msg); else console.log(msg);
+}
+
+/* ============================================================ CRC32 + ZIP writer */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+async function deflateRaw(bytes) {
+  if (typeof CompressionStream === "undefined") return null;
+  try {
+    const cs = new CompressionStream("deflate-raw");
+    const stream = new Blob([bytes]).stream().pipeThrough(cs);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch { return null; }
+}
+// entries: [{name: string, data: Uint8Array}] → Uint8Array of a valid ZIP
+async function makeZip(entries) {
+  const parts = [], central = [];
+  let offset = 0;
+  const te = new TextEncoder();
+  for (const e of entries) {
+    const nameB = te.encode(e.name);
+    const crc = crc32(e.data);
+    let method = 0, payload = e.data;
+    const deflated = await deflateRaw(e.data);
+    if (deflated && deflated.length < e.data.length) { method = 8; payload = deflated; }
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);          // version needed
+    lh.setUint16(6, 0x0800, true);      // UTF-8 names
+    lh.setUint16(8, method, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, payload.length, true);
+    lh.setUint32(22, e.data.length, true);
+    lh.setUint16(26, nameB.length, true);
+    parts.push(new Uint8Array(lh.buffer), nameB, payload);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true); ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, method, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, payload.length, true);
+    ch.setUint32(24, e.data.length, true);
+    ch.setUint16(28, nameB.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameB);
+    offset += 30 + nameB.length + payload.length;
+  }
+  const centralSize = central.reduce((s, b) => s + b.length, 0);
+  const eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(8, entries.length, true);
+  eocd.setUint16(10, entries.length, true);
+  eocd.setUint32(12, centralSize, true);
+  eocd.setUint32(16, offset, true);
+  const all = [...parts, ...central, new Uint8Array(eocd.buffer)];
+  const total = all.reduce((s, b) => s + b.length, 0);
+  const out = new Uint8Array(total);
+  let p = 0;
+  for (const b of all) { out.set(b, p); p += b.length; }
+  return out;
+}
+
+/* ============================================================ OBJ / MTL parsing */
+function parseMTL(text) {
+  const mats = {};
+  let cur = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("newmtl ")) {
+      cur = { kd: [0.8, 0.8, 0.8], mapKd: null };
+      mats[line.slice(7).trim()] = cur;
+    } else if (cur && line.startsWith("Kd ")) {
+      cur.kd = line.slice(3).trim().split(/\s+/).map(Number);
+    } else if (cur && line.startsWith("map_Kd ")) {
+      cur.mapKd = line.slice(7).trim();          // may contain spaces
+    }
+  }
+  return mats;
+}
+function parseOBJ(text) {
+  const pos = [], uv = [], tris = [];
+  let mtllib = null, curMtl = null;
+  const resolveIdx = (s, len) => { const i = parseInt(s, 10); return i < 0 ? len + i : i - 1; };
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("v ")) {
+      const p = line.slice(2).trim().split(/\s+/).map(Number);
+      pos.push(p[0], p[1], p[2]);
+    } else if (line.startsWith("vt ")) {
+      const t = line.slice(3).trim().split(/\s+/).map(Number);
+      uv.push(t[0], t[1]);
+    } else if (line.startsWith("usemtl ")) {
+      curMtl = line.slice(7).trim();
+    } else if (line.startsWith("mtllib ")) {
+      mtllib = line.slice(7).trim();
+    } else if (line.startsWith("f ")) {
+      const vCount = pos.length / 3, tCount = uv.length / 2;
+      const verts = line.slice(2).trim().split(/\s+/).map(tok => {
+        const p = tok.split("/");
+        return {
+          v: resolveIdx(p[0], vCount),
+          t: (p.length > 1 && p[1] !== "") ? resolveIdx(p[1], tCount) : -1,
+        };
+      });
+      for (let i = 1; i + 1 < verts.length; i++) {          // fan-triangulate
+        tris.push({
+          v: [verts[0].v, verts[i].v, verts[i + 1].v],
+          t: [verts[0].t, verts[i].t, verts[i + 1].t],
+          m: curMtl,
+        });
+      }
+    }
+  }
+  return { pos, uv, tris, mtllib };
+}
+
+/* ============================================================ texture sampling */
+async function decodePNG(bytes) {
+  const bmp = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+  const cv = document.createElement("canvas");
+  cv.width = bmp.width; cv.height = bmp.height;
+  const ctx = cv.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(bmp, 0, 0);
+  const img = ctx.getImageData(0, 0, bmp.width, bmp.height);
+  bmp.close();
+  return { w: img.width, h: img.height, data: img.data };
+}
+// Nearest-neighbor, clamp-to-edge, OBJ v-flip. Never bilinear — the atlas gutters are white.
+function sampleNearest(tex, u, v) {
+  const x = Math.min(tex.w - 1, Math.max(0, Math.floor(u * tex.w)));
+  const y = Math.min(tex.h - 1, Math.max(0, Math.floor((1 - v) * tex.h)));
+  const i = (y * tex.w + x) * 4;
+  return [tex.data[i], tex.data[i + 1], tex.data[i + 2], tex.data[i + 3]];
+}
+
+/* ============================================================ color baking */
+// For each triangle sample 4 points: UV centroid + 3 corner points pulled 50% toward the
+// centroid (all safely inside the face's solid-color atlas patch, away from white gutters),
+// then take the majority color, centroid breaking ties.
+function bakeTriangleColor(tex, uvs) {
+  const cu = (uvs[0][0] + uvs[1][0] + uvs[2][0]) / 3;
+  const cv = (uvs[0][1] + uvs[1][1] + uvs[2][1]) / 3;
+  const pts = [[cu, cv]];
+  for (const [u, v] of uvs) pts.push([(u + cu) / 2, (v + cv) / 2]);
+  const counts = new Map();
+  let first = null;
+  for (const [u, v] of pts) {
+    const c = sampleNearest(tex, u, v);
+    const key = (c[0] << 24 | c[1] << 16 | c[2] << 8 | (c[3] < 128 ? 0 : 255)) >>> 0;
+    if (first === null) first = key;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let best = first, bestN = 0;
+  for (const [k, n] of counts) if (n > bestN || (n === bestN && k === first)) { best = k; bestN = n; }
+  return [(best >>> 24) & 255, (best >>> 16) & 255, (best >>> 8) & 255, best & 255];
+}
+function mergePalette(faceColors, tolerance, maxColors) {
+  const hist = new Map();
+  for (const c of faceColors) {
+    const key = c[0] << 16 | c[1] << 8 | c[2];
+    hist.set(key, (hist.get(key) || 0) + 1);
+  }
+  const sorted = [...hist.entries()].sort((a, b) => b[1] - a[1]);
+  const reps = [], mapTo = new Map();
+  for (const [key] of sorted) {
+    const r = key >> 16 & 255, g = key >> 8 & 255, b = key & 255;
+    let found = -1;
+    if (tolerance > 0) {
+      for (let i = 0; i < reps.length; i++) {
+        const [rr, rg, rb] = reps[i];
+        if (Math.hypot(r - rr, g - rg, b - rb) <= tolerance) { found = i; break; }
+      }
+    }
+    if (found < 0) { reps.push([r, g, b]); found = reps.length - 1; }
+    mapTo.set(key, found);
+  }
+  // cap the palette at maxColors: reps are in descending-frequency creation order, so keep
+  // the first N and fold the tail into whichever kept color is nearest
+  let palette = reps;
+  if (maxColors > 0 && reps.length > maxColors) {
+    palette = reps.slice(0, maxColors);
+    const fold = new Map();
+    for (let i = maxColors; i < reps.length; i++) {
+      const [r, g, b] = reps[i];
+      let best = 0, bestD = 1/0;
+      for (let k = 0; k < palette.length; k++) {
+        const d = Math.hypot(r - palette[k][0], g - palette[k][1], b - palette[k][2]);
+        if (d < bestD) { bestD = d; best = k; }
+      }
+      fold.set(i, best);
+    }
+    for (const [key, idx] of mapTo) if (idx >= maxColors) mapTo.set(key, fold.get(idx));
+  }
+  return { palette, indexOf: (c) => mapTo.get(c[0] << 16 | c[1] << 8 | c[2]) };
+}
+
+/* ============================================================ mesh repair */
+// Quest models are assemblies of voxel boxes; limbs/features are open boxes missing the
+// hidden face where they plug into the body. Slicers hit those open shells as broken
+// contours. Pipeline: weld UV-seam duplicates -> drop junk triangles -> split
+// non-manifold vertices -> chain boundary edges into closed loops -> cap each loop.
+
+// Every undirected edge of a closed orientable surface must be used exactly twice, once
+// in each direction. Anything else is what Bambu Studio reports as a non-manifold edge.
+function auditManifold(tris) {
+  const use = new Map();
+  for (const t of tris) for (let k = 0; k < 3; k++) {
+    const a = t.v[k], b = t.v[(k + 1) % 3];
+    const key = a < b ? a + "_" + b : b + "_" + a;
+    let e = use.get(key);
+    if (!e) use.set(key, e = { f: 0, r: 0 });
+    if (a < b) e.f++; else e.r++;
+  }
+  let open = 0, over = 0, flipped = 0;
+  for (const e of use.values()) {
+    const n = e.f + e.r;
+    if (n === 1) open++;
+    else if (n > 2) over++;
+    else if (e.f !== 1) flipped++;
+  }
+  return { open, over, flipped, bad: open + over + flipped };
+}
+
+// Ear clipping in 2D. A corner fan is only valid for convex loops; plug-holes in these
+// models are often L- or T-shaped, where a fan throws a triangle outside the hole.
+function earClip(n, px, py) {
+  const out = [];
+  if (n < 3) return out;
+  const idx = [...Array(n).keys()];
+  const cross = (o, a, b) => (px[a] - px[o]) * (py[b] - py[o]) - (py[a] - py[o]) * (px[b] - px[o]);
+  const inTri = (a, b, c, p) => {
+    const d1 = cross(a, b, p), d2 = cross(b, c, p), d3 = cross(c, a, p);
+    return (d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0);
+  };
+  let guard = 0;
+  while (idx.length > 3 && guard++ < n * n + 16) {
+    let clipped = false;
+    for (let k = 0; k < idx.length; k++) {
+      const L = idx.length;
+      const a = idx[(k + L - 1) % L], b = idx[k], c = idx[(k + 1) % L];
+      if (cross(a, b, c) <= 0) continue;                 // reflex or collinear
+      let bad = false;
+      const same = (p, q) => px[p] === px[q] && py[p] === py[q];
+      for (const m of idx) {
+        if (m === a || m === b || m === c) continue;
+        // Skip vertices that merely COINCIDE with this ear's corners. Bridging a hole into an
+        // outer contour deliberately duplicates two vertices, and by index they are different
+        // points — so without this the duplicate sits exactly on the ear and blocks it, no ear
+        // is ever clipped, and the polygon falls through to the fan fallback as garbage. That
+        // is why every peg's re-mesh was failing.
+        if (same(m, a) || same(m, b) || same(m, c)) continue;
+        if (inTri(a, b, c, m)) { bad = true; break; }
+      }
+      if (bad) continue;
+      out.push([a, b, c]);
+      idx.splice(k, 1);
+      clipped = true;
+      break;
+    }
+    if (!clipped) break;                                  // give up, fan the remainder
+  }
+  for (let i = 1; i + 1 < idx.length; i++) out.push([idx[0], idx[i], idx[i + 1]]);
+  return out;
+}
+
+function repairMesh(verts, tris) {
+  /* 1. weld coincident vertices so topology connects across UV seams. Quantised to
+        1e-4 mm - far below print resolution, but enough to absorb float noise. */
+  const Q = 1e4, qk = (x) => Math.round(x * Q);
+  const posId = new Map(), canon = new Int32Array(verts.length / 3);
+  const V = [];
+  for (let i = 0; i < verts.length / 3; i++) {
+    const key = qk(verts[i * 3]) + "," + qk(verts[i * 3 + 1]) + "," + qk(verts[i * 3 + 2]);
+    let id = posId.get(key);
+    if (id === undefined) {
+      id = V.length / 3;
+      posId.set(key, id);
+      V.push(verts[i * 3], verts[i * 3 + 1], verts[i * 3 + 2]);
+    }
+    canon[i] = id;
+  }
+
+  /* 2. drop collapsed triangles and same-winding duplicates. Opposite-winding
+        coincident pairs are LEFT ALONE: they are already edge-balanced, and deleting
+        one of them would tear open a new hole. */
+  const seen = new Set(), T = [];
+  let nDegen = 0, nDup = 0;
+  for (const t of tris) {
+    const v = [canon[t.v[0]], canon[t.v[1]], canon[t.v[2]]];
+    if (v[0] === v[1] || v[1] === v[2] || v[2] === v[0]) { nDegen++; continue; }
+    const m = (v[0] <= v[1] && v[0] <= v[2]) ? 0 : (v[1] <= v[2] ? 1 : 2);
+    const key = v[m] + "_" + v[(m + 1) % 3] + "_" + v[(m + 2) % 3];
+    if (seen.has(key)) { nDup++; continue; }
+    seen.add(key);
+    T.push({ v, p: t.p });
+  }
+  const nSurface = T.length;
+
+  /* 3. split non-manifold vertices. Welding by position also fuses boxes that merely
+        TOUCH at a corner. Around such a vertex the triangle fan falls into two pieces
+        that are not edge-connected, and leaving them fused is what produces a pinch
+        vertex - the direct cause of a stray non-manifold edge. UV-seam duplicates
+        inside a single box stay fused, because those fans ARE edge-connected. */
+  let nVertSplit = 0;
+  {
+    const fan = new Map();
+    for (let i = 0; i < T.length; i++) for (const v of T[i].v) {
+      let a = fan.get(v);
+      if (!a) fan.set(v, a = []);
+      a.push(i);
+    }
+    for (const [vid, tl] of fan) {
+      if (tl.length < 2) continue;
+      const pos = new Map(tl.map((t, i) => [t, i]));
+      const par = tl.map((_, i) => i);
+      const find = (i) => { while (par[i] !== i) i = par[i] = par[par[i]]; return i; };
+      const byOther = new Map();
+      for (const t of tl) {
+        const v = T[t].v, k = v.indexOf(vid);
+        for (const nb of [v[(k + 1) % 3], v[(k + 2) % 3]]) {
+          let a = byOther.get(nb);
+          if (!a) byOther.set(nb, a = []);
+          a.push(t);
+        }
+      }
+      for (const group of byOther.values()) for (let i = 1; i < group.length; i++) {
+        const x = find(pos.get(group[0])), y = find(pos.get(group[i]));
+        if (x !== y) par[y] = x;
+      }
+      const rootToVid = new Map();
+      for (const t of tl) {
+        const r = find(pos.get(t));
+        let nv = rootToVid.get(r);
+        if (nv === undefined) {
+          if (rootToVid.size === 0) nv = vid;              // first component keeps the id
+          else { nv = V.length / 3; V.push(V[vid * 3], V[vid * 3 + 1], V[vid * 3 + 2]); nVertSplit++; }
+          rootToVid.set(r, nv);
+        }
+        if (nv !== vid) {
+          const v = T[t].v;
+          for (let k = 0; k < 3; k++) if (v[k] === vid) v[k] = nv;
+        }
+      }
+    }
+  }
+
+  /* 4. directed-edge multiplicity. An a->b occurring more often than its b->a partner
+        leaves (count - reverseCount) unmatched boundary edges - counted, not just
+        flagged, so duplicated edges cannot silently overwrite each other. */
+  const dcount = new Map(), owner = new Map();
+  for (let i = 0; i < T.length; i++) {
+    const v = T[i].v;
+    for (let k = 0; k < 3; k++) {
+      const key = v[k] + "," + v[(k + 1) % 3];
+      dcount.set(key, (dcount.get(key) || 0) + 1);
+      if (!owner.has(key)) owner.set(key, i);
+    }
+  }
+  // tail -> LIST of outgoing boundary edges. A list, not one entry: a vertex can be the
+  // tail of several boundary edges at once, and keeping only one stitches separate holes
+  // into a single bogus loop whose cap leaves a non-manifold edge behind.
+  const adj = new Map();
+  let nBoundary = 0;
+  for (const [key, n] of dcount) {
+    const c = key.indexOf(",");
+    const a = +key.slice(0, c), b = +key.slice(c + 1);
+    const surplus = n - (dcount.get(b + "," + a) || 0);
+    if (surplus <= 0) continue;
+    let arr = adj.get(a);
+    if (!arr) adj.set(a, arr = []);
+    for (let s = 0; s < surplus; s++) arr.push({ to: b, tri: owner.get(key) });
+    nBoundary += surplus;
+  }
+
+  /* 5. chain boundary edges into loops, consuming each edge exactly once. If the walk
+        revisits a vertex already on the chain, that closes a SUB-loop: emit it, rewind
+        to that point, keep walking. Partial chains are never capped - capping an
+        unclosed chain is itself a way to manufacture non-manifold edges. */
+  const tails = [...adj.keys()];
+  const loops = [];
+  let unclosed = 0, ti = 0;
+  for (;;) {
+    while (ti < tails.length && !adj.get(tails[ti]).length) ti++;
+    if (ti >= tails.length) break;
+    const start = tails[ti];
+    const stack = [];
+    const posIn = new Map([[start, 0]]);
+    let cur = start;
+    for (let guard = 0; guard <= nBoundary + 1; guard++) {
+      const arr = adj.get(cur);
+      if (!arr || !arr.length) break;                       // dead end
+      const e = arr.pop();
+      stack.push({ from: cur, to: e.to, tri: e.tri });
+      const at = posIn.get(e.to);
+      if (at === undefined) { posIn.set(e.to, stack.length); cur = e.to; continue; }
+      const seg = stack.splice(at);
+      for (const s of seg) posIn.delete(s.from);
+      if (seg.length >= 3) loops.push(seg); else unclosed++;
+      if (!stack.length) break;
+      cur = e.to;
+      posIn.set(cur, stack.length);
+    }
+    unclosed += stack.length;
+  }
+
+  /* 6. cap every closed loop */
+  let capTris = 0;
+  const elen = (a, b) => Math.hypot(V[a*3] - V[b*3], V[a*3+1] - V[b*3+1], V[a*3+2] - V[b*3+2]);
+  for (const seg of loops) {
+    const loop = seg.map(e => e.from), owners = seg.map(e => e.tri), L = loop.length;
+
+    // Colour by MAJORITY VOTE over the whole hole boundary, weighted by edge length,
+    // rather than inheriting from one arbitrary boundary edge.
+    const bEdge = new Map();          // "a,b" -> palette index of the owning triangle
+    const score = new Map();
+    for (let i = 0; i < L; i++) {
+      const a = loop[i], b = loop[(i + 1) % L], p = T[owners[i]].p;
+      bEdge.set(a + "," + b, p);
+      score.set(p, (score.get(p) || 0) + (elen(a, b) || 1e-6));
+    }
+    let loopP = T[owners[0]].p, bestW = -1;
+    for (const [p, w] of score) if (w > bestW) { bestW = w; loopP = p; }
+
+    // Newell normal -> drop the dominant axis -> ear-clip in that plane.
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < L; i++) {
+      const a = loop[i], b = loop[(i + 1) % L];
+      const ax = V[a*3], ay = V[a*3+1], az = V[a*3+2];
+      const bx = V[b*3], by = V[b*3+1], bz = V[b*3+2];
+      nx += (ay - by) * (az + bz); ny += (az - bz) * (ax + bx); nz += (ax - bx) * (ay + by);
+    }
+    const fx = Math.abs(nx), fy = Math.abs(ny), fz = Math.abs(nz);
+    const drop = (fz >= fx && fz >= fy) ? 2 : (fy >= fx ? 1 : 0);
+    const cu = drop === 0 ? 1 : 0, cv = drop === 2 ? 1 : 2;
+
+    // Reverse the loop so cap edges oppose the boundary edges (outward-facing caps).
+    const poly = loop.slice().reverse();
+    const px = new Float64Array(L), py = new Float64Array(L);
+    for (let i = 0; i < L; i++) { px[i] = V[poly[i]*3 + cu]; py[i] = V[poly[i]*3 + cv]; }
+    let area2 = 0;
+    for (let i = 0; i < L; i++) { const j = (i + 1) % L; area2 += px[i]*py[j] - px[j]*py[i]; }
+    if (area2 < 0) for (let i = 0; i < L; i++) py[i] = -py[i];   // mirror, keep index order
+
+    for (const tri of earClip(L, px, py)) {
+      const v = [poly[tri[0]], poly[tri[1]], poly[tri[2]]];
+      // A cap triangle touching the rim takes the colour of the boundary it touches;
+      // interior cap triangles fall back to the loop-wide vote.
+      const local = new Map();
+      for (let k = 0; k < 3; k++) {
+        const a = v[k], b = v[(k + 1) % 3];
+        const p = bEdge.get(b + "," + a);                   // caps run against the rim
+        if (p !== undefined) local.set(p, (local.get(p) || 0) + elen(a, b));
+      }
+      let capP = loopP, lw = -1;
+      for (const [p, w] of local) if (w > lw) { lw = w; capP = p; }
+      // cap:true marks a face the ORIGINAL model did not have — i.e. the hidden opening
+      // where a limb/feature plugs into its host. Split mode uses exactly these faces as
+      // its connector sites, which is what keeps every externally visible face untouched.
+      T.push({ v, p: capP, cap: true });
+      capTris++;
+    }
+  }
+
+  return {
+    verts: V, tris: T, holes: loops.length, capTris,
+    unclosed, nDegen, nDup, nVertSplit, nSurface,
+    audit: auditManifold(T),
+  };
+}
+
+/* ============================================================ split mode: geometry core
+
+   Goal: cut the repaired model into one solid part per filament colour, add snap
+   connectors, and leave EVERY EXTERNALLY VISIBLE TRIANGLE bit-identical.
+
+   Why this is possible at all: after repairMesh the model is a closed manifold whose
+   triangles fall into two classes. Original OBJ triangles are visible surface. Triangles
+   repairMesh generated as caps (t.cap) are the openings where a limb or a feature plugs
+   into its host — those were never visible, so they are the only faces we are allowed to
+   modify. Every connector in this module is built on a cap face or buried behind a
+   feature, which is what makes the "nothing visible changes" guarantee mechanical rather
+   than aspirational.
+
+   Two connector kinds, both reducing to "prism into a pocket":
+     peg    — a stub grown on a part's cap face, entering a pocket in the host. Used where
+              a whole sub-box (leg, ear, tail) plugs into a bigger part.
+     tenon  — for a colour patch too thin to print alone (a 0.7 mm eye decal at 50 mm).
+              The visible face is kept exactly; a tenon is extended BACKWARDS into the
+              host until the part clears the minimum printable thickness, and the host
+              gets the matching pocket. This is the construction CG3D used on Gengar's
+              eyes and mouth (1.3 mm visible cap + 7.3 mm tenon).
+*/
+
+const SPLIT_EPS = 1e-4;                     // mm; coincidence tolerance
+const v3sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const v3cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const v3dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+const v3len = (a) => Math.hypot(a[0], a[1], a[2]);
+function v3norm(a) { const L = v3len(a) || 1; return [a[0]/L, a[1]/L, a[2]/L]; }
+
+function triGeo(verts, t) {
+  const A = [verts[t.v[0]*3], verts[t.v[0]*3+1], verts[t.v[0]*3+2]];
+  const B = [verts[t.v[1]*3], verts[t.v[1]*3+1], verts[t.v[1]*3+2]];
+  const C = [verts[t.v[2]*3], verts[t.v[2]*3+1], verts[t.v[2]*3+2]];
+  const n = v3cross(v3sub(B, A), v3sub(C, A));
+  const area2 = v3len(n);
+  return { A, B, C, n: area2 > 0 ? [n[0]/area2, n[1]/area2, n[2]/area2] : [0,0,1], area: area2/2,
+           c: [(A[0]+B[0]+C[0])/3, (A[1]+B[1]+C[1])/3, (A[2]+B[2]+C[2])/3] };
+}
+
+// Greedy nearest-representative colour grouping. Deliberately NOT union-find: the atlases
+// bake directional shading, so a colour family forms a CHAIN of near neighbours (Bulbasaur
+// runs body-green -> mid-green -> bulb-green). Transitive merging collapses that whole
+// chain into one filament and loses the bulb; comparing only against already-chosen
+// representatives keeps the ends of the chain apart.
+function filamentGroups(palette, counts, tol) {
+  const order = palette.map((_, i) => i).sort((a, b) => (counts[b]||0) - (counts[a]||0));
+  const reps = [], groupOf = new Int32Array(palette.length).fill(-1);
+  for (const i of order) {
+    const [r, g, b] = palette[i];
+    let hit = -1;
+    for (let k = 0; k < reps.length; k++) {
+      const [rr, rg, rb] = palette[reps[k]];
+      if (Math.hypot(r - rr, g - rg, b - rb) <= tol) { hit = k; break; }
+    }
+    if (hit < 0) { reps.push(i); hit = reps.length - 1; }
+    groupOf[i] = hit;
+  }
+  return { groupOf, repColor: reps.map(i => palette[i]) };
+}
+
+// Neighbour lists across shared undirected edges. On a closed manifold every edge has
+// exactly two owners; edges that do not are skipped rather than guessed at, so a model
+// that failed its audit degrades into more parts instead of corrupt ones.
+function triAdjacency(tris) {
+  const em = new Map();
+  for (let i = 0; i < tris.length; i++) {
+    const v = tris[i].v;
+    for (let k = 0; k < 3; k++) {
+      const a = v[k], b = v[(k+1)%3];
+      const key = a < b ? a + "_" + b : b + "_" + a;
+      let arr = em.get(key);
+      if (!arr) em.set(key, arr = []);
+      arr.push(i);
+    }
+  }
+  const nb = tris.map(() => []);
+  for (const arr of em.values()) {
+    if (arr.length !== 2) continue;
+    nb[arr[0]].push(arr[1]);
+    nb[arr[1]].push(arr[0]);
+  }
+  return nb;
+}
+
+// Flood fill over triangles. `member(i)` gates which triangles participate; `same(a,b)`
+// gates which neighbours are allowed to join.
+function triComponents(nTris, nb, member, same) {
+  const comp = new Int32Array(nTris).fill(-1);
+  const comps = [];
+  for (let i = 0; i < nTris; i++) {
+    if (comp[i] >= 0 || (member && !member(i))) continue;
+    const id = comps.length, list = [i], stack = [i];
+    comp[i] = id;
+    while (stack.length) {
+      const t = stack.pop();
+      for (const u of nb[t]) {
+        if (comp[u] >= 0) continue;
+        if (member && !member(u)) continue;
+        if (same && !same(t, u)) continue;
+        comp[u] = id; list.push(u); stack.push(u);
+      }
+    }
+    comps.push(list);
+  }
+  return { comp, comps };
+}
+
+// Closed boundary loops of a triangle subset: directed edges used more often one way than
+// the other are the rim. Same walk repairMesh uses — sub-loops are emitted as they close,
+// and an unclosed chain is discarded rather than capped, because capping an open chain is
+// itself a way to manufacture a non-manifold edge.
+function boundaryLoops(tris, idx) {
+  const dc = new Map();
+  for (const i of idx) {
+    const v = tris[i].v;
+    for (let k = 0; k < 3; k++) {
+      const key = v[k] + "," + v[(k+1)%3];
+      dc.set(key, (dc.get(key) || 0) + 1);
+    }
+  }
+  const adj = new Map();
+  let nB = 0;
+  for (const [key, n] of dc) {
+    const ci = key.indexOf(",");
+    const a = +key.slice(0, ci), b = +key.slice(ci+1);
+    const surplus = n - (dc.get(b + "," + a) || 0);
+    if (surplus <= 0) continue;
+    let arr = adj.get(a);
+    if (!arr) adj.set(a, arr = []);
+    for (let s = 0; s < surplus; s++) arr.push(b);
+    nB += surplus;
+  }
+  const loops = [];
+  for (const start of [...adj.keys()]) {
+    for (;;) {
+      const a0 = adj.get(start);
+      if (!a0 || !a0.length) break;
+      const stack = [], posIn = new Map([[start, 0]]);
+      let cur = start;
+      for (let guard = 0; guard <= nB + 1; guard++) {
+        const arr = adj.get(cur);
+        if (!arr || !arr.length) break;
+        const to = arr.pop();
+        stack.push({ from: cur, to });
+        const at = posIn.get(to);
+        if (at === undefined) { posIn.set(to, stack.length); cur = to; continue; }
+        const seg = stack.splice(at);
+        for (const s of seg) posIn.delete(s.from);
+        if (seg.length >= 3) loops.push(seg.map(e => e.from));
+        if (!stack.length) break;
+        cur = to;
+        posIn.set(cur, stack.length);
+      }
+    }
+  }
+  return loops;
+}
+
+// Group a triangle subset into coplanar, connected planar faces. Plane identity is
+// quantised so float noise in the OBJ does not shatter one box face into slivers.
+function planarFaces(verts, tris, idx, nb) {
+  const NQ = 1e3, DQ = 1e2;
+  const key = new Map();
+  for (const i of idx) {
+    const g = triGeo(verts, tris[i]);
+    const k = [Math.round(g.n[0]*NQ), Math.round(g.n[1]*NQ), Math.round(g.n[2]*NQ),
+               Math.round(v3dot(g.n, g.A)*DQ)].join(",");
+    key.set(i, k);
+  }
+  const inSet = new Set(idx);
+  const { comps } = triComponents(tris.length, nb, (i) => inSet.has(i),
+                                  (a, b) => key.get(a) === key.get(b));
+  const faces = [];
+  for (const list of comps) {
+    const g = triGeo(verts, tris[list[0]]);
+    let area = 0;
+    for (const i of list) area += triGeo(verts, tris[i]).area;
+    faces.push({ tris: list, n: g.n, d: v3dot(g.n, g.A), area });
+  }
+  return faces;
+}
+
+// Build a 2D frame on a plane so polygons in it can be triangulated in the plane.
+function planeFrame(n) {
+  const up = Math.abs(n[2]) < 0.9 ? [0,0,1] : [1,0,0];
+  const u = v3norm(v3cross(up, n));
+  return { u, v: v3cross(n, u) };
+}
+function to2D(fr, o, p) { const w = v3sub(p, o); return [v3dot(w, fr.u), v3dot(w, fr.v)]; }
+
+// Signed area of a 2D ring. Used to orient rings; there is no convexity gate any more.
+function ringArea(pts) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const j = (i+1) % pts.length;
+    a += pts[i][0]*pts[j][1] - pts[j][0]*pts[i][1];
+  }
+  return a / 2;
+}
+
+/* ---- part builder: its own vertex table, welded by position ---- */
+function newPart(name) {
+  return { name, verts: [], tris: [], _ix: new Map(), notes: [], connectors: 0 };
+}
+function partVert(part, x, y, z) {
+  const k = Math.round(x*SPQ_P) + "," + Math.round(y*SPQ_P) + "," + Math.round(z*SPQ_P);
+  let id = part._ix.get(k);
+  if (id === undefined) {
+    id = part.verts.length / 3;
+    part._ix.set(k, id);
+    part.verts.push(x, y, z);
+  }
+  return id;
+}
+const SPQ_P = 1e4;
+function partTri(part, a, b, c, p) {
+  if (a === b || b === c || c === a) return;
+  part.tris.push({ v: [a, b, c], p });
+}
+// Copy a triangle from the global repaired mesh, preserving its exact coordinates and
+// palette index. This is the operation that makes visible faces bit-identical.
+function copyTri(part, verts, t) {
+  const id = t.v.map(vi => partVert(part, verts[vi*3], verts[vi*3+1], verts[vi*3+2]));
+  partTri(part, id[0], id[1], id[2], t.p);
+}
+
+// Extrude a rim loop along dir through a series of stages and cap the far end. Each stage is
+// {off, inset}: off is the distance from the rim, inset shrinks that ring toward the rim
+// centroid. Stages exist because a tenon needs a SHOULDER — the first stage fills the space
+// the decal plate itself occupied and must match the rim exactly so the visible outline does
+// not change, and only the stage past the host's surface is narrowed by the fit clearance.
+// That is the same visible-cap / shoulder / tenon profile as Gengar's eye part.
+//
+// `holes` carries any inner loops of the patch: an iris with a pupil in it has an outer rim
+// plus a hole, and refusing those was what forced whole eye plates to stay one part with the
+// pupil printing in the iris colour. Holes are inset the other way (outward), so clearance
+// takes material off both the outside and the inside of the tenon.
+//
+// Returns false if the loop is unusable, so the caller can fall back to a butt joint.
+// `extraFarHoles` are rings ALREADY at the far plane which become additional holes in the far
+// cap but get no walls of their own. That is how a seating boss is opened in the back of a
+// decal piece: the caller punches the hole here and then extrudes a prism out of it.
+function addStack(part, ring3, dir, stages, pIdx, flip, holes, extraFarHoles) {
+  const loops = [ring3, ...(holes || [])];
+  if (ring3.length < 3 || !stages.length) return false;
+  for (const l of loops) if (l.length < 3) return false;
+
+  const farLoops = [];
+  for (let li = 0; li < loops.length; li++) {
+    const loop = loops[li], L = loop.length, isHole = li > 0;
+    const c = [0,0,0];
+    for (const p of loop) { c[0]+=p[0]; c[1]+=p[1]; c[2]+=p[2]; }
+    for (let k = 0; k < 3; k++) c[k] /= L;
+    const coords = [loop];
+    const rings = [loop.map(p => partVert(part, p[0], p[1], p[2]))];
+    for (const st of stages) {
+      // A hole grows as the outline shrinks — but by its OWN amount. Sharing one figure meant
+      // a recess-shrink big enough to fit the host face also grew the pupil hole until it ran
+      // into the outer rim and the cap could not be triangulated at all.
+      const insetAmt = isHole ? (st.holeInset !== undefined ? st.holeInset : st.inset) : st.inset;
+      const inset = isHole ? -insetAmt : insetAmt;
+      const pts = loop.map(p => {
+        let q = [p[0], p[1], p[2]];
+        if (inset) {
+          const d = v3norm([c[0]-q[0], c[1]-q[1], c[2]-q[2]]);
+          q = [q[0]+d[0]*inset, q[1]+d[1]*inset, q[2]+d[2]*inset];
+        }
+        return [q[0]+dir[0]*st.off, q[1]+dir[1]*st.off, q[2]+dir[2]*st.off];
+      });
+      coords.push(pts);
+      rings.push(pts.map(p => partVert(part, p[0], p[1], p[2])));
+    }
+    for (let s = 0; s + 1 < rings.length; s++) {
+      const near = rings[s], far = rings[s+1];
+      for (let i = 0; i < L; i++) {
+        const j = (i+1) % L;
+        if (flip) {
+          partTri(part, near[i], far[i], far[j], pIdx);
+          partTri(part, near[i], far[j], near[j], pIdx);
+        } else {
+          partTri(part, near[i], far[j], far[i], pIdx);
+          partTri(part, near[i], near[j], far[j], pIdx);
+        }
+      }
+    }
+    farLoops.push(coords[coords.length - 1]);
+  }
+
+  // Cap the far end: outer ring minus the hole rings (plus any boss opening).
+  for (const r of (extraFarHoles || [])) {
+    if (r.length < 3) return false;
+    farLoops.push(r);
+  }
+  const fr = planeFrame(v3norm(dir)), o = farLoops[0][0];
+  const pts2 = [], outerIdx = [], holeIdxs = [];
+  for (const p of farLoops[0]) { outerIdx.push(pts2.length); pts2.push(to2D(fr, o, p)); }
+  for (let h = 1; h < farLoops.length; h++) {
+    const idx = [];
+    for (const p of farLoops[h]) { idx.push(pts2.length); pts2.push(to2D(fr, o, p)); }
+    holeIdxs.push(idx);
+  }
+  const tris = triangulateWithHoles(pts2, outerIdx, holeIdxs);
+  if (!tris) return false;
+  const ids = [].concat(...farLoops).map(p => partVert(part, p[0], p[1], p[2]));
+  // Orientation is taken from the EDGE DIRECTION the walls need, not from the cap's normal.
+  // The two are not equivalent: whether a +dir-facing cap runs the ring forwards or backwards
+  // depends on how that particular ring happens to wind in (u, v), so inferring it from the
+  // normal mis-wound the caps on some rings and left those parts inside-out.
+  // With flip set, the walls consume far[i]->far[j], so the cap must consume far[j]->far[i].
+  let runsForward = null;
+  for (const t of tris) {
+    for (let k = 0; k < 3 && runsForward === null; k++) {
+      const a = t[k], b = t[(k+1) % 3];
+      if (a === outerIdx[0] && b === outerIdx[1]) runsForward = true;
+      else if (a === outerIdx[1] && b === outerIdx[0]) runsForward = false;
+    }
+    if (runsForward !== null) break;
+  }
+  const swap = runsForward === null ? false : (runsForward === !!flip);
+  for (const t of tris) {
+    if (swap) partTri(part, ids[t[0]], ids[t[2]], ids[t[1]], pIdx);
+    else      partTri(part, ids[t[0]], ids[t[1]], ids[t[2]], pIdx);
+  }
+  return true;
+}
+
+/* ---- Turn a colour patch into a thin solid by SKINNING it: keep its triangles as the front
+   face, add a translated and reversed copy as the back face, and wall the two together along
+   every boundary loop.
+
+   No triangulation anywhere, so unlike the cap-based construction this cannot fail on a patch
+   with a hole in it (an iris with a pupil), a non-convex outline, or a non-planar surface —
+   all three of which are routine on these eye plates, and any one of which used to force the
+   whole plate to stay a single part with its pupil printing in the iris colour.
+
+   The front keeps each triangle's ORIGINAL palette index, so the visible face is untouched in
+   both geometry and colour. ---- */
+function addSkin(part, verts, tris, gtris, loops, dir, off, pIdx) {
+  if (!(off > 0.01) || !gtris.length) return false;
+  const shift = (p) => [p[0] + dir[0]*off, p[1] + dir[1]*off, p[2] + dir[2]*off];
+  for (const i of gtris) {
+    const t = tris[i];
+    const f = t.v.map(vi => partVert(part, verts[vi*3], verts[vi*3+1], verts[vi*3+2]));
+    partTri(part, f[0], f[1], f[2], t.p);                        // front, exactly as it was
+    const b = t.v.map(vi => {
+      const q = shift([verts[vi*3], verts[vi*3+1], verts[vi*3+2]]);
+      return partVert(part, q[0], q[1], q[2]);
+    });
+    partTri(part, b[0], b[2], b[1], pIdx);                       // back, wound the other way
+  }
+  for (const lp of loops) {
+    const L = lp.length;
+    const f = lp.map(p => partVert(part, p[0], p[1], p[2]));
+    const b = lp.map(p => { const q = shift(p); return partVert(part, q[0], q[1], q[2]); });
+    for (let i = 0; i < L; i++) {
+      const j = (i+1) % L;
+      // consumes f[j]->f[i], opposing the front patch's own rim edges, and b[i]->b[j],
+      // opposing the reversed back face — so the piece closes whatever shape the loop is
+      partTri(part, f[i], b[i], b[j], pIdx);
+      partTri(part, f[i], b[j], f[j], pIdx);
+    }
+  }
+  return true;
+}
+
+/* ---- point-in-solid, by counting +X ray crossings (Möller–Trumbore, X-axis specialised).
+   Used to answer "which part is behind this face", the question that decides where a
+   pocket goes. Rays are nudged off-axis so they cannot graze a shared box edge. ---- */
+function pointInMesh(verts, tris, p) {
+  let hits = 0;
+  const dy = 0.0013, dz = 0.0007;          // irrational-ish tilt; avoids edge/vertex hits
+  for (const t of tris) {
+    const a0 = t.v[0]*3, b0 = t.v[1]*3, c0 = t.v[2]*3;
+    const ay = verts[a0+1] - p[1] - 0, az = verts[a0+2] - p[2];
+    const by = verts[b0+1] - p[1], bz = verts[b0+2] - p[2];
+    const cy = verts[c0+1] - p[1], cz = verts[c0+2] - p[2];
+    // project onto the plane perpendicular to the (1, dy, dz) direction ~ use YZ with shear
+    const AY = ay - dy*(verts[a0] - p[0]), AZ = az - dz*(verts[a0] - p[0]);
+    const BY = by - dy*(verts[b0] - p[0]), BZ = bz - dz*(verts[b0] - p[0]);
+    const CY = cy - dy*(verts[c0] - p[0]), CZ = cz - dz*(verts[c0] - p[0]);
+    const d1 = AY*BZ - AZ*BY, d2 = BY*CZ - BZ*CY, d3 = CY*AZ - CZ*AY;
+    if (!((d1 >= 0 && d2 >= 0 && d3 >= 0) || (d1 <= 0 && d2 <= 0 && d3 <= 0))) continue;
+    const den = d1 + d2 + d3;
+    if (Math.abs(den) < 1e-14) continue;
+    const tx = (d2*(verts[a0]-p[0]) + d3*(verts[b0]-p[0]) + d1*(verts[c0]-p[0])) / den;
+    if (tx > 1e-7) hits++;
+  }
+  return (hits & 1) === 1;
+}
+
+function bboxOf(verts, tris, idx) {
+  let mn = [1/0,1/0,1/0], mx = [-1/0,-1/0,-1/0];
+  for (const i of idx) for (const vi of tris[i].v) for (let k = 0; k < 3; k++) {
+    const q = verts[vi*3+k];
+    if (q < mn[k]) mn[k] = q;
+    if (q > mx[k]) mx[k] = q;
+  }
+  return { mn, mx, size: [mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]] };
+}
+const bboxHit = (A, B, pad) =>
+  A.mn[0] <= B.mx[0]+pad && B.mn[0] <= A.mx[0]+pad &&
+  A.mn[1] <= B.mx[1]+pad && B.mn[1] <= A.mx[1]+pad &&
+  A.mn[2] <= B.mx[2]+pad && B.mn[2] <= A.mx[2]+pad;
+
+/* ---- Re-mesh a planar face as an annulus around a hole.
+   Both connector kinds go through here: the face's own triangles are dropped by the caller,
+   this fills the ring between the face's outer boundary and the hole, and the caller then
+   extrudes a prism out of the hole — outward for a peg, inward for a pocket. Returns false
+   without touching the part whenever the shape is not something we can safely re-mesh, so
+   the joint degrades to a plain butt joint. Watertightness is never traded for a connector.
+
+   Rings are stitched by whichever next diagonal is shorter, and each triangle's winding is
+   decided from its own 2D sign, so a reversed input ring cannot silently invert a face. ---- */
+/* ---- 2D polygon-with-holes triangulation, by bridging each hole into the outer contour and
+   ear clipping the simple polygon that results.
+
+   This exists because the first version could only re-mesh a face when both the face outline
+   and the hole were convex, and it declined everything else — which is why so many eyes and
+   pupils fell back to "fused + painted" instead of becoming parts. A voxel eye outline is
+   routinely non-convex.
+
+   Self-checking: the triangulated area must equal outer-minus-holes. Bridging is the fiddly
+   part of ear clipping, so rather than trust it, the result is measured and the caller is
+   told to skip the connector if it does not add up. ---- */
+const seg2Cross = (o, a, b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+function segsProperlyCross(p1, p2, p3, p4) {
+  const d1 = seg2Cross(p3, p4, p1), d2 = seg2Cross(p3, p4, p2);
+  const d3 = seg2Cross(p1, p2, p3), d4 = seg2Cross(p1, p2, p4);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+function ringSignedArea(pts, idx) {
+  let a = 0;
+  for (let i = 0; i < idx.length; i++) {
+    const p = pts[idx[i]], q = pts[idx[(i+1) % idx.length]];
+    a += p[0]*q[1] - q[0]*p[1];
+  }
+  return a / 2;
+}
+// Nearest vertex of the outer ring that the hole's rightmost vertex can see. Simple O(n^2)
+// visibility rather than earcut's ray-cast heuristic: these rings are tens of points, and a
+// wrong bridge here shows up as a self-intersecting cap.
+function findBridge(pts, ring, M, blockers) {
+  const m = pts[M];
+  let best = -1, bd = 1/0;
+  for (const v of ring) {
+    const p = pts[v];
+    const d = (p[0]-m[0])**2 + (p[1]-m[1])**2;
+    if (d >= bd || d === 0) continue;
+    let blocked = false;
+    for (const list of blockers) {
+      for (let i = 0; i < list.length && !blocked; i++) {
+        const a = list[i], b = list[(i+1) % list.length];
+        if (a === v || b === v || a === M || b === M) continue;
+        if (segsProperlyCross(m, p, pts[a], pts[b])) blocked = true;
+      }
+      if (blocked) break;
+    }
+    if (!blocked) { bd = d; best = v; }
+  }
+  return best;
+}
+function earClipIdx(pts, ring) {
+  const n = ring.length;
+  const px = new Float64Array(n), py = new Float64Array(n);
+  for (let i = 0; i < n; i++) { px[i] = pts[ring[i]][0]; py[i] = pts[ring[i]][1]; }
+  let a2 = 0;
+  for (let i = 0; i < n; i++) { const j = (i+1)%n; a2 += px[i]*py[j] - px[j]*py[i]; }
+  if (a2 < 0) for (let i = 0; i < n; i++) py[i] = -py[i];   // earClip wants CCW
+  return earClip(n, px, py).map(t => [ring[t[0]], ring[t[1]], ring[t[2]]]);
+}
+// pts: [[x,y],...]; outerIdx / holeIdxs index into it. Returns index triples, or null.
+function triangulateWithHoles(pts, outerIdx, holeIdxs) {
+  let ring = outerIdx.slice();
+  if (ringSignedArea(pts, ring) < 0) ring.reverse();               // outer CCW
+  const holes = holeIdxs.map(h => {
+    const g = h.slice();
+    if (ringSignedArea(pts, g) > 0) g.reverse();                   // holes CW
+    return g;
+  });
+  const maxX = (idx) => Math.max(...idx.map(i => pts[i][0]));
+  holes.sort((a, b) => maxX(b) - maxX(a));                          // rightmost hole first
+  const pending = holes.slice();
+  for (const h of holes) {
+    pending.shift();
+    let hi = 0;
+    for (let i = 1; i < h.length; i++) if (pts[h[i]][0] > pts[h[hi]][0]) hi = i;
+    const M = h[hi];
+    const B = findBridge(pts, ring, M, [ring, h, ...pending]);
+    if (B < 0) return null;
+    const at = ring.indexOf(B);
+    const rot = h.slice(hi).concat(h.slice(0, hi));                // starts at M
+    // ... B, M, around the hole, M, B, ... — B and M each appear twice, which is what makes
+    // the bridged contour a single simple polygon
+    ring = ring.slice(0, at + 1).concat([M], rot.slice(1), [M], ring.slice(at));
+  }
+  const tris = earClipIdx(pts, ring);
+  if (!tris || !tris.length) return null;
+  const want = Math.abs(ringSignedArea(pts, outerIdx))
+             - holeIdxs.reduce((s, h) => s + Math.abs(ringSignedArea(pts, h)), 0);
+  let got = 0;
+  for (const t of tris)
+    got += Math.abs(seg2Cross(pts[t[0]], pts[t[1]], pts[t[2]])) / 2;
+  if (!(want > 0) || Math.abs(got - want) > Math.max(1e-4, want * 0.02)) return null;
+  return tris;
+}
+
+// Returns the hole ring AS USED (possibly reversed) — the caller must extrude that exact
+// array, because the prism has to run each hole edge opposite to the way the annulus ran it.
+// Split into plan + emit so viability can be settled while PLANNING. A connector is two
+// halves on two parts; if one half turned out impossible at build time the other was already
+// built, leaving a tenon buried in solid host material — visible as overlapping geometry.
+// Deciding up front means a connector is either planned on both parts or on neither.
+function annulusPlan(outerRing3, holeRing3, n) {
+  const fr = planeFrame(n), o = outerRing3[0];
+  const outer = outerRing3.slice(), hole = holeRing3.slice();
+  // Orient explicitly — outer CCW, hole CW, both seen from +n. The hole ring is returned so
+  // the prism that follows can run each hole edge OPPOSITE to the way the annulus ran it;
+  // getting only the normals right leaves the edge directions free and mis-winds the join.
+  if (ringArea(outer.map(p => to2D(fr, o, p))) < 0) outer.reverse();
+  if (ringArea(hole.map(p => to2D(fr, o, p))) > 0) hole.reverse();
+  const pts2 = [], oIdx = [], hIdx = [];
+  for (const p of outer) { oIdx.push(pts2.length); pts2.push(to2D(fr, o, p)); }
+  for (const p of hole)  { hIdx.push(pts2.length); pts2.push(to2D(fr, o, p)); }
+  const tris = triangulateWithHoles(pts2, oIdx, [hIdx]);   // one hole, but a LIST of holes
+  if (!tris) return null;
+  return { ring: [...outer, ...hole], hole, pts2, tris };
+}
+function emitAnnulus(part, ap, pIdx) {
+  const ids = ap.ring.map(p => partVert(part, p[0], p[1], p[2]));
+  for (const t of ap.tris) {
+    // wind each triangle so it faces +n, i.e. CCW in the (u, v) frame. With every triangle
+    // facing +n the patch boundary is forced: outer contour CCW, hole contour CW — which is
+    // the order `hole` is normalised to, so the prism can simply run it backwards.
+    const cr = seg2Cross(ap.pts2[t[0]], ap.pts2[t[1]], ap.pts2[t[2]]);
+    if (cr > 0) partTri(part, ids[t[0]], ids[t[1]], ids[t[2]], pIdx);
+    else        partTri(part, ids[t[0]], ids[t[2]], ids[t[1]], pIdx);
+  }
+  return ap.hole;
+}
+
+// Largest inscribed distance from a ring's centroid to its edges — how much room a face has
+// for a peg plus the wall that must survive around it.
+function ringInradius(ring2, c) {
+  let r = 1/0;
+  for (let i = 0; i < ring2.length; i++) {
+    const a = ring2[i], b = ring2[(i+1)%ring2.length];
+    const ex = b[0]-a[0], ey = b[1]-a[1], L = Math.hypot(ex, ey) || 1;
+    r = Math.min(r, Math.abs((c[0]-a[0])*ey - (c[1]-a[1])*ex) / L);
+  }
+  return r;
+}
+// How far a 2D point sits inside a ring: positive means clear of every edge by that much.
+function ringClearance(ring2, q) {
+  if (!pointInRing(q, ring2)) return -1;
+  let r = 1/0;
+  for (let i = 0; i < ring2.length; i++) {
+    const a = ring2[i], b = ring2[(i+1)%ring2.length];
+    const ex = b[0]-a[0], ey = b[1]-a[1], L = Math.hypot(ex, ey) || 1;
+    r = Math.min(r, Math.abs((q[0]-a[0])*ey - (q[1]-a[1])*ex) / L);
+  }
+  return r;
+}
+// A square of side 2*half centred at an EXPLICIT point on a planar face, returned only if it
+// fits inside the face's outline with a wall margin. The centre has to be explicit: a peg and
+// its socket live on two different faces, and centring each on its own face's centroid puts
+// them in different places whenever the host face is the large one.
+function squareAt(ring3, n, c3, half, margin) {
+  const fr = planeFrame(n), o = ring3[0];
+  const ring2 = ring3.map(p => to2D(fr, o, p));
+  const c = to2D(fr, o, c3);
+  const sq2 = [[c[0]-half,c[1]-half], [c[0]+half,c[1]-half],
+               [c[0]+half,c[1]+half], [c[0]-half,c[1]+half]];
+  // Corners, edge midpoints and the centre — enough sample points that a concave notch
+  // cutting across the square cannot slip between them. There is deliberately NO convexity
+  // requirement any more: it used to reject every arm spike and eye plate, whose outlines
+  // wrap a 3D form and are almost never convex, so no peg could ever be placed on them.
+  const probes = sq2.slice();
+  for (let i = 0; i < 4; i++) {
+    const a = sq2[i], b = sq2[(i+1) % 4];
+    probes.push([(a[0]+b[0]) / 2, (a[1]+b[1]) / 2]);
+  }
+  probes.push([c[0], c[1]]);
+  for (const q of probes) if (ringClearance(ring2, q) < margin) return null;
+  const from2 = (q) => [o[0] + fr.u[0]*q[0] + fr.v[0]*q[1],
+                        o[1] + fr.u[1]*q[0] + fr.v[1]*q[1],
+                        o[2] + fr.u[2]*q[0] + fr.v[2]*q[1]];
+  return sq2.map(from2);
+}
+/* Best spot for a connector inside two overlapping outlines: the point of their shared
+   footprint that sits furthest from either boundary, found by sampling a grid.
+
+   A bounding-box centre is no use here. These outlines are rarely convex — an arm spike is
+   V-shaped, an eye plate wraps a chamfer — and the box centre lands on or outside an edge,
+   measured at 0.03 mm of clearance on one of Darkrai's spikes despite a 5 x 7 mm overlap.
+   The returned clearance also sizes the peg, so no search over sizes is needed. */
+function bestPegSpot(ringA3, ringB3, nB, avoid3) {
+  const fr = planeFrame(nB), o = ringB3[0];
+  const a2 = ringA3.map(q => to2D(fr, o, q));
+  const b2 = ringB3.map(q => to2D(fr, o, q));
+  // Rings the peg must stay OUT of — the patch's own holes. An iris is a ring around a pupil,
+  // and without this the boss lands on the pupil opening, where it cannot be built.
+  const av = (avoid3 || []).map(r => r.map(q => to2D(fr, o, q)));
+  const outsideBy = (ring2, p) => {
+    if (ringClearance(ring2, p) >= 0) return -1;          // inside the hole: unusable
+    let d = 1/0;
+    for (let i = 0; i < ring2.length; i++) {
+      const a = ring2[i], b = ring2[(i+1) % ring2.length];
+      const ex = b[0]-a[0], ey = b[1]-a[1], L = Math.hypot(ex, ey) || 1;
+      d = Math.min(d, Math.abs((p[0]-a[0])*ey - (p[1]-a[1])*ex) / L);
+    }
+    return d;
+  };
+  const sp = (r, k) => [Math.min(...r.map(p => p[k])), Math.max(...r.map(p => p[k]))];
+  const [ax0, ax1] = sp(a2, 0), [bx0, bx1] = sp(b2, 0);
+  const [ay0, ay1] = sp(a2, 1), [by0, by1] = sp(b2, 1);
+  const x0 = Math.max(ax0, bx0), x1 = Math.min(ax1, bx1);
+  const y0 = Math.max(ay0, by0), y1 = Math.min(ay1, by1);
+  if (x1 - x0 < 0.8 || y1 - y0 < 0.8) return null;
+  let best = null, bestScore = 0;
+  const N = 12;
+  for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++) {
+    const p = [x0 + (x1-x0)*i/N, y0 + (y1-y0)*j/N];
+    let s = Math.min(ringClearance(a2, p), ringClearance(b2, p));
+    for (const h2 of av) s = Math.min(s, outsideBy(h2, p));
+    if (s > bestScore) { bestScore = s; best = p; }
+  }
+  if (!best) return null;
+  return { p3: [o[0] + fr.u[0]*best[0] + fr.v[0]*best[1],
+                o[1] + fr.u[1]*best[0] + fr.v[1]*best[1],
+                o[2] + fr.u[2]*best[0] + fr.v[2]*best[1]],
+           clearance: bestScore };
+}
+
+// Shrink a ring toward its own centroid. Used to bring a recess outline inside the face it
+// is cut into when the piece overhangs it slightly.
+function insetRing(ring3, d) {
+  const c = [0,0,0];
+  for (const p of ring3) for (let k = 0; k < 3; k++) c[k] += p[k] / ring3.length;
+  return ring3.map(p => {
+    const v = v3norm([c[0]-p[0], c[1]-p[1], c[2]-p[2]]);
+    return [p[0]+v[0]*d, p[1]+v[1]*d, p[2]+v[2]*d];
+  });
+}
+
+// Does an inner ring sit wholly inside an outer one, clear of its edges? A pocket outline
+// that pokes past the host face would make the annulus re-mesh degenerate.
+function ringInside(outer3, n, inner3, margin) {
+  const fr = planeFrame(n), o = outer3[0];
+  const outer2 = outer3.map(p => to2D(fr, o, p));
+  for (const p of inner3) if (ringClearance(outer2, to2D(fr, o, p)) < margin) return false;
+  return true;
+}
+const PEG_WALL = 1.0;                     // mm of material that must remain around a peg
+
+/* ============================================================ split mode: orchestrator
+
+   1. group the palette into filaments (shading twins collapse, real colours stay apart)
+   2. split the closed mesh into shells; each shell votes a dominant filament by area
+   3. thin "decal" shells (an eye plate is 0.7 mm at 50 mm) are handled specially: every
+      colour patch on the visible side becomes its own part, thickened by a tenon
+   4. solid shells cluster into parts by filament + adjacency, so same-colour touching
+      boxes stay one part (colour-only splitting, as requested)
+   5. connectors: pegs on cap faces between different parts, tenons for decals
+   6. every part is audited; a connector that would break watertightness is dropped
+*/
+// 2D crossing test; used to confirm a host face really sits behind a connector site rather
+// than merely sharing its plane somewhere else on the model.
+function pointInRing(q, ring2) {
+  let inside = false;
+  for (let i = 0, j = ring2.length - 1; i < ring2.length; j = i++) {
+    const a = ring2[i], b = ring2[j];
+    if ((a[1] > q[1]) !== (b[1] > q[1]) &&
+        q[0] < (b[0]-a[0]) * (q[1]-a[1]) / (b[1]-a[1]) + a[0]) inside = !inside;
+  }
+  return inside;
+}
+// The host's own face behind a connector site. Voxel decals are authored slightly EMBEDDED
+// in the part they sit on (Pikachu's cheek back is 0.06 mm inside the body face), so this
+// matches the nearest plane within a tolerance rather than exact coincidence, and
+// disambiguates by requiring the face to actually cover the site.
+function findHostFace(verts, tris, nb, gtris, wantN, nearCoord, ax, pointOn, tol) {
+  let best = null;
+  for (const f of planarFaces(verts, tris, gtris, nb)) {
+    if (v3dot(f.n, wantN) < 0.999) continue;
+    const coord = f.d * wantN[ax];
+    if (Math.abs(coord - nearCoord) > tol) continue;
+    const loops = boundaryLoops(tris, f.tris);
+    if (loops.length !== 1 || loops[0].length < 3) continue;
+    const ring3 = loops[0].map(vi => [verts[vi*3], verts[vi*3+1], verts[vi*3+2]]);
+    const fr = planeFrame(f.n), o = ring3[0];
+    if (!pointInRing(to2D(fr, o, pointOn), ring3.map(p => to2D(fr, o, p)))) continue;
+    if (!best || f.area > best.face.area) best = { face: f, ring3, coord };
+  }
+  return best;
+}
+
+// Close a boundary loop with an ear-clipped cap wound to OPPOSE the loop's own edges, so it
+// continues the surface it was taken from. Ear clipping rather than a corner fan, because a
+// colour boundary on these models follows the voxel chamfers and is often L- or T-shaped.
+// Two regions meeting at one loop each cap it from their own side, and because their loops
+// run opposite ways the two caps are the same surface with opposite winding — they mate
+// exactly, with no clearance and nothing visible changed.
+// Planned ONCE per seam and then emitted by both parts that meet there, with opposite
+// winding. Two independent ear clips of the same rim only agree when the rim is planar, and
+// these colour boundaries follow the voxel chamfers, so they usually are not — one 18-vertex
+// Darkrai seam spans 13.4 x 0.5 x 3.1 mm. Independent caps gave the two parts two DIFFERENT
+// surfaces, which overlapped in places and gapped in others: the z-fighting on the red body.
+function planCap(ring3) {
+  const L = ring3.length;
+  if (L < 3) return null;
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < L; i++) {
+    const a = ring3[i], b = ring3[(i+1) % L];
+    nx += (a[1]-b[1])*(a[2]+b[2]); ny += (a[2]-b[2])*(a[0]+b[0]); nz += (a[0]-b[0])*(a[1]+b[1]);
+  }
+  const fx = Math.abs(nx), fy = Math.abs(ny), fz = Math.abs(nz);
+  const drop = (fz >= fx && fz >= fy) ? 2 : (fy >= fx ? 1 : 0);
+  const cu = drop === 0 ? 1 : 0, cv = drop === 2 ? 1 : 2;
+  const order = [];
+  for (let i = L - 1; i >= 0; i--) order.push(i);      // reversed: oppose the rim's own edges
+  const px = new Float64Array(L), py = new Float64Array(L);
+  for (let i = 0; i < L; i++) { px[i] = ring3[order[i]][cu]; py[i] = ring3[order[i]][cv]; }
+  let a2 = 0;
+  for (let i = 0; i < L; i++) { const j = (i+1) % L; a2 += px[i]*py[j] - px[j]*py[i]; }
+  if (a2 < 0) for (let i = 0; i < L; i++) py[i] = -py[i];
+  const tris = earClip(L, px, py).map(t => [order[t[0]], order[t[1]], order[t[2]]]);
+  return tris.length ? tris : null;
+}
+function emitCap(part, ring3, capTris, swap, pIdx) {
+  if (!capTris) return false;
+  const ids = ring3.map(p => partVert(part, p[0], p[1], p[2]));
+  for (const t of capTris) {
+    if (swap) partTri(part, ids[t[0]], ids[t[2]], ids[t[1]], pIdx);
+    else      partTri(part, ids[t[0]], ids[t[1]], ids[t[2]], pIdx);
+  }
+  return true;
+}
+
+/* The part behind a face is found by PLANAR FACE MATCHING, never by ray casting. A part is
+   an open surface until its caps are added, so an inside/outside test against one part's
+   triangles gives the wrong answer — which is what silently disabled the connectors on the
+   first attempt. Matching a coplanar face of the neighbour has no such failure mode. */
+function findHostAcross(verts, tris, nb, parts, skip, wantN, nearCoord, ax, pointOn, tol) {
+  let host = -1, hf = null;
+  for (let q = 0; q < parts.length; q++) {
+    if (skip.has(q)) continue;
+    const f = findHostFace(verts, tris, nb, parts[q].gtris, wantN, nearCoord, ax, pointOn, tol);
+    if (f && (!hf || f.face.area > hf.face.area)) { host = q; hf = f; }
+  }
+  return host < 0 ? null : { host, hf };
+}
+
+function splitIntoParts(verts, tris, palette, opts) {
+  /* ---- 1. filaments ---- */
+  const counts = new Array(palette.length).fill(0);
+  for (const t of tris) counts[t.p]++;
+  const { groupOf, repColor } = filamentGroups(palette, counts, opts.groupTol);
+  const gOf = (i) => groupOf[tris[i].p];
+  // A triangle's `p` is always a PALETTE index — the 3MF writer maps it through groupOf to
+  // pick the filament. Geometry this module generates (caps, walls, pegs) has to store a
+  // palette index too, so this is the representative palette entry for each filament group.
+  // Storing the group index directly is wrong twice over: it lands on whatever palette entry
+  // happens to share that number, and it made internal faces claim the wrong filament.
+  const palOfGroup = [];
+  for (let i = 0; i < palette.length; i++)
+    if (palOfGroup[groupOf[i]] === undefined) palOfGroup[groupOf[i]] = i;
+  const P3 = (vi) => [verts[vi*3], verts[vi*3+1], verts[vi*3+2]];
+
+  /* ---- 2. topology ---- */
+  const nb = triAdjacency(tris);
+  const edgeOwner = new Map();
+  for (let i = 0; i < tris.length; i++) {
+    const v = tris[i].v;
+    for (let k = 0; k < 3; k++) edgeOwner.set(v[k] + "," + v[(k+1)%3], i);
+  }
+  const { comps: shells, comp: shellOf } = triComponents(tris.length, nb, null, null);
+  const shellBB = shells.map(s => bboxOf(verts, tris, s));
+  const shellThin = shellBB.map(b => Math.min(...b.size));
+  const { comps: regions } = triComponents(tris.length, nb, null, (a, b) => gOf(a) === gOf(b));
+
+  // A shell thinner than the minimum printable part is a DECAL: an eye plate, a cheek, a
+  // mouth line. It is real geometry, just 0.3-1 mm of it at a 50 mm model height. Decals do
+  // not get cut — every colour patch on the visible side becomes its own piece, thickened by
+  // a tenon reaching back into whatever it sits on.
+  const isDecalShell = shellThin.map(t => t < opts.minThick);
+
+  /* ---- 3. solid shells: colour regions, merged by filament + adjacency ---- */
+  const solidRegions = regions.filter(r => !isDecalShell[shellOf[r[0]]]);
+  const R = solidRegions.map((idx, ri) => {
+    const bb = bboxOf(verts, tris, idx);
+    return { ri, idx, bb, thin: Math.min(...bb.size), group: gOf(idx[0]) };
+  });
+  const uf = R.map((_, i) => i);
+  const find = (i) => { while (uf[i] !== i) i = uf[i] = uf[uf[i]]; return i; };
+  for (let i = 0; i < R.length; i++) for (let j = i+1; j < R.length; j++) {
+    if (R[i].group !== R[j].group) continue;
+    if (!bboxHit(R[i].bb, R[j].bb, 0.05)) continue;
+    const a = find(i), b = find(j);
+    if (a !== b) uf[b] = a;
+  }
+  let parts = [], partOfTri = new Int32Array(tris.length).fill(-1);
+  const rebuild = () => {
+    parts = [];
+    const rootToPart = new Map();
+    for (let i = 0; i < R.length; i++) {
+      const r = find(i);
+      let pi = rootToPart.get(r);
+      if (pi === undefined) {
+        pi = parts.length;
+        rootToPart.set(r, pi);
+        parts.push({ group: R[i].group, color: repColor[R[i].group], regions: [] });
+      }
+      parts[pi].regions.push(i);
+    }
+    for (const p of parts) {
+      p.gtris = p.regions.flatMap(ri => R[ri].idx);
+      p.bb = bboxOf(verts, tris, p.gtris);
+      p.thin = Math.min(...p.bb.size);
+      p.thinAxis = p.bb.size.indexOf(p.thin);
+      // area-weighted outward normal: for a surface patch this points out of the model, so
+      // its negative is the direction to thicken into. Reliable where ray casting is not.
+      const n = [0,0,0];
+      for (const i of p.gtris) {
+        const g = triGeo(verts, tris[i]);
+        for (let k = 0; k < 3; k++) n[k] += g.n[k] * g.area;
+      }
+      p.outN = n;
+    }
+    partOfTri = new Int32Array(tris.length).fill(-1);
+    parts.forEach((p, pi) => p.gtris.forEach(i => partOfTri[i] = pi));
+  };
+  rebuild();
+
+  // Absorb any part too small to exist on its own into the neighbour it shares most edges
+  // with. Its triangles keep their own palette index, so the feature still prints in its own
+  // colour — it just is not a separate piece. Thin is fine (that is what tenons are for);
+  // this is about the two LATERAL dimensions.
+  for (let pass = 0; pass < 4; pass++) {
+    let changed = false;
+    for (let pi = 0; pi < parts.length; pi++) {
+      const s = parts[pi].bb.size.slice().sort((a, b) => a - b);
+      if (s[1] >= opts.minFeature) continue;
+      const votes = new Map();
+      for (const i of parts[pi].gtris) {
+        const v = tris[i].v;
+        for (let k = 0; k < 3; k++) {
+          const opp = edgeOwner.get(v[(k+1)%3] + "," + v[k]);
+          if (opp === undefined) continue;
+          const q = partOfTri[opp];
+          if (q < 0 || q === pi) continue;
+          // Only ever absorb into the SAME filament. Merging across filaments keeps the
+          // triangles but prints them in the host's colour, which is how a pupil disappears.
+          if (parts[q].group !== parts[pi].group) continue;
+          votes.set(q, (votes.get(q) || 0) + 1);
+        }
+      }
+      let best = -1, bn = 0;
+      for (const [q, n] of votes) if (n > bn) { bn = n; best = q; }
+      if (best < 0) continue;
+      const a = find(parts[best].regions[0]), b = find(parts[pi].regions[0]);
+      if (a !== b) { uf[b] = a; changed = true; }
+    }
+    if (!changed) break;
+    rebuild();
+  }
+
+  const plan = parts.map(() => ({ caps: [], stacks: [], punch: [], notes: [],
+                                  punched: new Set() }));
+  const decalParts = [];
+  const hiddenDropped = new Set();     // faces deliberately removed because nothing sees them
+  // Signed volume a planned decal piece would enclose. Negative means it is wound inside-out
+  // — empty space rather than material — and would slice as garbage, so it is never emitted.
+  /* ---- Build one decal piece. This is THE single place a decal piece is constructed, used
+     both for the trial that vets a candidate and for the real thing, so what gets validated
+     is exactly what gets emitted. Three shapes it can take:
+       skin  — front face plus a translated reversed copy, walled together: a glue-on piece
+       stack — walls to the back plane with a capped back, optionally with a boss punched in
+               it and a prism grown out of that boss: a piece that seats into a socket
+       stacks— the stepped tenon of the full snap-fit route
+     Returns null when the geometry cannot be built at all, so callers reject it rather than
+     silently dropping the piece and losing its faces. ---- */
+  const buildDecal = (part, dp) => {
+    if (dp.skin) {
+      return addSkin(part, verts, tris, dp.gtris, dp.skin.loops, dp.skin.dir, dp.skin.off,
+                     dp.pIdx !== undefined ? dp.pIdx : palOfGroup[dp.group]);
+    }
+    for (const i of dp.gtris) copyTri(part, verts, tris[i]);   // visible face, untouched
+    const pI = dp.pIdx !== undefined ? dp.pIdx : palOfGroup[dp.group];
+    if (dp.stack) {
+      const st = dp.stack;
+      if (!addStack(part, st.rim, st.dir, [{ off: st.off, inset: 0 }], pI, true, st.holes,
+                    st.boss ? [st.boss] : null)) return false;
+      if (st.boss && !addStack(part, st.boss, st.dir, st.bossStages, pI, st.bossFlip))
+        return false;
+      return true;
+    }
+    for (const s of (dp.stacks || []))
+      if (!addStack(part, s.ring3, s.dir, s.stages, s.pIdx, true, s.holes)) return false;
+    return true;
+  };
+  const decalTrial = (dp) => {
+    const t = newPart(null);
+    if (!buildDecal(t, dp)) return null;
+    let V = 0;
+    for (const tr of t.tris) {
+      const a = tr.v[0]*3, b = tr.v[1]*3, c = tr.v[2]*3, q = t.verts;
+      V += q[a]  *(q[b+1]*q[c+2] - q[b+2]*q[c+1])
+         - q[a+1]*(q[b]  *q[c+2] - q[b+2]*q[c])
+         + q[a+2]*(q[b]  *q[c+1] - q[b+1]*q[c]);
+    }
+    return { audit: auditManifold(t.tris), vol: V / 6 };
+  };
+  // -1 for "cannot be built at all", so the caller's `<= 0` test rejects it.
+  const decalVolume = (dp) => {
+    const r = decalTrial(dp);
+    return r ? r.vol : -1;
+  };
+  // At most ONE punch per face. Two connectors opening through the same face would each
+  // re-mesh it from scratch, and the second would overwrite the first — the annulus stitch
+  // handles one hole, not two. A second connector on a face is simply declined.
+  const faceKey = (op) => op.faceTris.slice().sort((a, b) => a - b).join(",");
+  const freePunch = (pl, op) => !pl.punched.has(faceKey(op));
+  const addPunch = (pl, op) => {
+    const k = faceKey(op);
+    if (pl.punched.has(k)) return false;
+    pl.punched.add(k);
+    pl.punch.push(op);
+    // A punched face is RE-MESHED into an annulus, so its original triangles do not survive
+    // verbatim. Every punch site is a face the model already hid — an opening repairMesh
+    // invented, or a face covered by the part that plugs into it — and triangulateWithHoles
+    // has already verified the re-mesh covers exactly the same area, so the surface itself is
+    // unchanged. Recorded as re-meshed rather than left to trip the lost-face guard.
+    for (const i of op.faceTris) hiddenDropped.add(i);
+    return true;
+  };
+
+  /* ---- 4. seams between solid parts.
+     Which side of a seam gets thickened is DECIDED BY MEASUREMENT, not by a bbox heuristic.
+     A colour patch is a surface, not a volume: capping its rim encloses either a bulge or a
+     DENT, and a dent is empty space wound inside-out — a negative-volume part that slices as
+     garbage. That was behind the missing pupils, and behind Bulbasaur losing 14% of its
+     volume to a single inverted part. So seams are planned twice: once with plain caps to see
+     what volume each part actually encloses, then again giving a tenon to every part that
+     came out inverted or thinner than a quarter of a minimum-thickness slab. ---- */
+  let iface = new Map();
+  const planSeams = (tenonSet) => {
+    iface = new Map();
+    for (const pl of plan) { pl.caps.length = 0; pl.stacks.length = 0; }
+    for (let pi = 0; pi < parts.length; pi++) {
+      for (const lp of boundaryLoops(tris, parts[pi].gtris)) {
+        const votes = new Map();
+        for (let i = 0; i < lp.length; i++) {
+          const opp = edgeOwner.get(lp[(i+1) % lp.length] + "," + lp[i]);
+          if (opp === undefined) continue;
+          const q = partOfTri[opp];
+          if (q === pi || q < 0) continue;
+          votes.set(q, (votes.get(q) || 0) + 1);
+        }
+        let other = -1, bn = 0;
+        for (const [q, n] of votes) if (n > bn) { bn = n; other = q; }
+        const ring3 = lp.map(P3);
+        // Both sides must agree on the offset AND on the cap surface, so it is all decided
+        // once, keyed by the loop's vertex set — identical from either side, only reversed.
+        // The FIRST part to reach it owns the canonical ring; the other reuses that exact
+        // ring with the winding flipped, which is what stops the two caps disagreeing.
+        const key = lp.slice().sort((a, b) => a - b).join(",");
+        if (!iface.has(key)) {
+          let thin = -1;
+          if (other >= 0) {
+            if (tenonSet.has(pi) && !tenonSet.has(other)) thin = pi;
+            else if (tenonSet.has(other) && !tenonSet.has(pi)) thin = other;
+            else if (tenonSet.has(pi) && tenonSet.has(other))
+              thin = (parts[pi].trialArea || 0) <= (parts[other].trialArea || 0) ? pi : other;
+          }
+          let delta = 0, dir = [0,0,0];
+          if (thin >= 0) {
+            // Thicken INWARD, along the negated area-weighted outward normal of the patch.
+            // Ray casting is not available here: a part is an open surface until it is capped.
+            const on = parts[thin].outN, m = on.map(Math.abs);
+            const mi = m.indexOf(Math.max(...m));
+            // A patch that faces every which way (a deep slot) has a near-zero resultant, and
+            // picking a direction off numerical noise would be arbitrary — leave it capped.
+            if (m[mi] > 0.02 * Math.max(1, parts[thin].trialArea || 1)) {
+              dir[mi] = -Math.sign(on[mi]);
+              // The resultant normal picks the axis reliably but can pick the WRONG SIGN on a
+              // patch that wraps (the tenon then grows outward and the part encloses negative
+              // volume). The measure-and-replan loop sets dirFlip when it sees that happen.
+              if (parts[thin].dirFlip) dir[mi] = -dir[mi];
+              delta = opts.jointDepth;
+              // A tenon only needs to reach PAST the region's own relief when that region is
+              // a DENT — Bulbasaur's mouth bar is a 5.4 mm recess, and a flat 2.5 mm slab let
+              // its surface poke back out, leaving the part inverted. Applying that to every
+              // thin-ish region was wrong: Darkrai's red collar spans ~15 mm along the joint
+              // axis, so it got a 17.3 mm extrusion instead of a 2.5 mm joint — the big flat
+              // horizontal slab with nothing to mate against. Only a region whose capped
+              // volume came out NEGATIVE is actually a dent, so only that case extends.
+              if ((parts[thin].trialVol || 0) < 0 && !opts.noRelief) {
+                const along = (p) => p[0]*dir[0] + p[1]*dir[1] + p[2]*dir[2];
+                let rimC = 0;
+                for (const q of ring3) rimC += along(q);
+                rimC /= ring3.length;
+                let deep = -1/0;
+                for (const i of parts[thin].gtris)
+                  for (const vi of tris[i].v) { const d = along(P3(vi)); if (d > deep) deep = d; }
+                delta = Math.max(opts.jointDepth, (deep - rimC) + opts.jointDepth);
+              }
+            }
+          }
+          iface.set(key, { delta, dir, thin, owner: pi, ring: ring3, cap: planCap(ring3) });
+        }
+        const it = iface.get(key);
+        const mine = (pi === it.owner);
+        if (it.delta > 0.02 && (pi === it.thin || other === it.thin)) {
+          plan[pi].stacks.push({ ring3: it.ring, dir: it.dir, pIdx: palOfGroup[parts[pi].group], flip: mine,
+            stages: pi === it.thin ? [{ off: it.delta, inset: opts.clearance }]
+                                   : [{ off: it.delta + opts.clearance, inset: 0 }] });
+        } else {
+          plan[pi].caps.push({ ring3: it.ring, cap: it.cap, swap: !mine, pIdx: palOfGroup[parts[pi].group] });
+        }
+      }
+    }
+  };
+  // Iterate: plan, measure what each part ACTUALLY encloses, add any part that came out
+  // inverted or too thin to the tenon set, re-plan. Measuring once was not enough — giving
+  // one part a tenon changes its neighbour's seam, which can expose a second offender.
+  // A slab of thickness t over face area F has V = F*t and surface A ~ 2F, so V ~ A*t/2;
+  // a quarter of that catches lenses and every inverted part, and leaves real solids alone.
+  const tenonSet = new Set();
+  for (let pass = 0; pass < 4; pass++) {
+    planSeams(tenonSet);
+    let added = false;
+    for (let pi = 0; pi < parts.length; pi++) {
+      const t = newPart(null);
+      for (const i of parts[pi].gtris) copyTri(t, verts, tris[i]);
+      for (const c of plan[pi].caps) emitCap(t, c.ring3, c.cap, c.swap, c.pIdx);
+      for (const s of plan[pi].stacks) {
+        const flip = s.flip === undefined ? true : s.flip;
+        if (!addStack(t, s.ring3, s.dir, s.stages, s.pIdx, flip, s.holes))
+          emitCap(t, s.ring3, planCap(s.ring3), !flip, s.pIdx);
+      }
+      let V = 0, A = 0;
+      for (const tr of t.tris) {
+        A += triGeo(t.verts, tr).area;
+        const a = tr.v[0]*3, b = tr.v[1]*3, c = tr.v[2]*3, q = t.verts;
+        V += q[a]  *(q[b+1]*q[c+2] - q[b+2]*q[c+1])
+           - q[a+1]*(q[b]  *q[c+2] - q[b+2]*q[c])
+           + q[a+2]*(q[b]  *q[c+1] - q[b+1]*q[c]);
+      }
+      V /= 6;
+      parts[pi].trialVol = V;
+      parts[pi].trialArea = A;
+      if (V < A * opts.minThick * 0.25 && !tenonSet.has(pi)) { tenonSet.add(pi); added = true; }
+      else if (V < 0 && tenonSet.has(pi) && !parts[pi].dirFlip) {
+        // it has a tenon and is STILL inverted: the tenon is growing the wrong way
+        parts[pi].dirFlip = true;
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+
+  /* ---- 5. decal shells — an eye plate, a cheek, a mouth line: real geometry, but only
+     0.3-1 mm of it at a 50 mm model height.
+
+     Best case is the reference's profile: visible face untouched, tenon back into the host,
+     matching pocket. That needs the host's coplanar face, the footprint to sit inside it, and
+     that face to be free — and when any of those fails the previous version fell back to
+     "fused + painted". That fallback is wrong for the way these get printed: a painted face
+     on a single-filament part simply does not appear, which is why eyes and pupils went
+     missing. So the fallback is now to give each colour patch the plate's OWN thickness
+     instead — a thin piece you glue rather than snap, but present, in its own colour, and
+     not overlapping anything. ---- */
+  for (let si = 0; si < shells.length; si++) {
+    if (!isDecalShell[si]) continue;
+    const S = shells[si], bb = shellBB[si], thin = shellThin[si];
+    // Some source shells are two coincident triangles with opposite winding — repairMesh
+    // leaves those alone because they are already edge-balanced. They enclose no volume and
+    // print as nothing, so they are dropped rather than emitted as a zero-volume part.
+    const shellVol = Math.abs(decalVolume({ gtris: S, stacks: [] }));
+    if (shellVol < 0.01) {
+      for (const i of S) hiddenDropped.add(i);
+      continue;
+    }
+
+    /* ---- Merge instead of splitting, where splitting buys nothing.
+
+       Darkrai's arm spikes are group 0 — the SAME filament as the body they sit on. They were
+       only ever separate pieces because they are thin shells, not because they are a different
+       colour, so they needed a connector that a 2 mm shell has no room for. Nothing whatever
+       is gained by splitting them: merged, they are simply part of the arm.
+
+       The same machinery serves the manual option: anything under "merge pieces below N mm³"
+       is folded into the part behind it. Merged triangles keep their own palette index, so on
+       an AMS machine they still paint in their own colour; on a single filament they take the
+       host's colour, which for a same-filament merge is no change at all. ---- */
+    const nearestPartTo = (set) => {
+      let A = 0, c = [0,0,0];
+      for (const i of set) {
+        const g = triGeo(verts, tris[i]);
+        A += g.area;
+        for (let k = 0; k < 3; k++) c[k] += g.c[k] * g.area;
+      }
+      if (A <= 0) return -1;
+      const cc = c.map(v => v / A), inSet = new Set(set);
+      let best = -1, bd = 1/0;
+      for (let i = 0; i < tris.length; i++) {
+        if (inSet.has(i) || partOfTri[i] < 0) continue;
+        const g = triGeo(verts, tris[i]);
+        const d = (g.c[0]-cc[0])**2 + (g.c[1]-cc[1])**2 + (g.c[2]-cc[2])**2;
+        if (d < bd) { bd = d; best = partOfTri[i]; }
+      }
+      return best;
+    };
+    {
+      const groups = new Set(S.map(i => gOf(i)));
+      const near = nearestPartTo(S);
+      const sameFilament = near >= 0 && groups.size === 1 && parts[near].group === [...groups][0];
+      const underThreshold = opts.mergeBelow > 0 && shellVol < opts.mergeBelow;
+      if (near >= 0 && (sameFilament || underThreshold)) {
+        plan[near].fuse = plan[near].fuse || [];
+        plan[near].fuse.push(...S);
+        plan[near].notes.push(sameFilament
+          ? `merged a ${thin.toFixed(2)}mm feature in — same filament as this part, so no join is needed`
+          : `merged a ${shellVol.toFixed(1)}mm³ feature in (below the merge threshold)`);
+        continue;
+      }
+    }
+    const ax = bb.size.indexOf(thin);
+    const e = [0,0,0]; e[ax] = 1;
+    const mid = [0,1,2].map(k => (bb.mn[k]+bb.mx[k])/2);
+
+    // Which way is the host? Answered against the WHOLE mesh, which is closed, rather than
+    // against one part, which is an open surface until it is capped.
+    let inward = 0;
+    for (const s of [1, -1]) {
+      const q = mid.slice();
+      q[ax] += s * (thin/2 + Math.max(0.3, thin));
+      if (pointInMesh(verts, tris, q)) { inward = s; break; }
+    }
+    if (!inward) {
+      // free-floating plate: keep it whole, it is already a valid closed solid
+      decalParts.push({ group: gOf(S[0]), gtris: S.slice(), stacks: [],
+                        note: "free-standing thin piece" });
+      continue;
+    }
+    const dirIn = [inward*e[0], inward*e[1], inward*e[2]];
+    const backCoord = inward > 0 ? bb.mx[ax] : bb.mn[ax];
+    const front = S.filter(i => triGeo(verts, tris[i]).n[ax] * inward < -0.3);
+    const fset = new Set(front);
+    const { comps: patches } = front.length
+      ? triComponents(tris.length, nb, (i) => fset.has(i), (a, b) => gOf(a) === gOf(b))
+      : { comps: [] };
+
+    // Per-patch rims, needed by both routes. A patch may have MORE THAN ONE loop: an iris
+    // with a pupil in it has an outer rim plus a hole. Refusing those was what forced whole
+    // eye plates to stay a single part, printing the pupil in the iris colour. The largest
+    // loop by projected area is the outer rim; the rest are holes, and the back face is
+    // closed with the polygon-with-holes triangulator.
+    const rims = [];
+    let rimsOk = patches.length > 0;
+    for (const pt of patches) {
+      const lps = boundaryLoops(tris, pt).map(l => l.map(P3));
+      if (!lps.length) { rimsOk = false; break; }
+      const u = ax === 0 ? 1 : 0, v = ax === 2 ? 1 : 2;
+      const areaOf = (ring) => Math.abs(ringArea(ring.map(p => [p[u], p[v]])));
+      lps.sort((a, b) => areaOf(b) - areaOf(a));
+      rims.push({ group: gOf(pt[0]), gtris: pt, rim: lps[0], holes: lps.slice(1),
+                  bb: bboxOf(verts, tris, pt) });
+    }
+    // The host face behind the plate. BOTH routes need it now: the snap-fit route pockets the
+    // whole footprint into it, and the glue-on route uses it for a seating boss — so it is
+    // looked up before either is attempted rather than inside the snap-fit route.
+    const wantN = [-inward*e[0], -inward*e[1], -inward*e[2]];
+    const probe = mid.slice(); probe[ax] = backCoord;
+    const got = rimsOk
+      ? findHostAcross(verts, tris, nb, parts, new Set(), wantN, backCoord, ax, probe, opts.minThick)
+      : null;
+
+    /* A SEATING BOSS for one patch: a square peg on the patch's hidden back face that drops
+       into a socket in whatever the plate sits on. This is what turns a piece glued flat onto
+       a surface into a piece that presses into an indent.
+
+       One boss per plate, not one per colour patch: a socket is punched into the host's face
+       and that face can only carry one connector, so the boss goes on the plate's largest
+       patch and the smaller patches (a pupil inside an iris) butt against their neighbours. */
+    const bossFor = (r, off) => {
+      if (!got) return null;
+      const shift = (p) => [p[0]+dirIn[0]*off, p[1]+dirIn[1]*off, p[2]+dirIn[2]*off];
+      const farRim = r.rim.map(shift);
+      const backN = [-dirIn[0], -dirIn[1], -dirIn[2]];
+      // Centre the boss on the OVERLAP between the patch's back and the host's face, not on
+      // the patch's own centroid. These plates routinely overhang the face they sit on (that
+      // is why the full-footprint route bails), and a boss at the patch centre then lands off
+      // the edge of the host face and cannot be placed at all — which is why the eye and the
+      // arm spikes had no socket to seat into.
+      const farHoles = r.holes.map(hl => hl.map(shift));
+      const spot = bestPegSpot(farRim, got.hf.ring3, got.hf.face.n, farHoles);
+      if (!spot) return null;
+      // Scale the connector to the PLATE, not to the global peg setting. A 3 mm peg with a
+      // 0.6 mm wall on a 0.5 mm eye wafer would snap off the moment it was handled; what a
+      // thin plate wants is a shallow, wide locating pad sitting in a shallow recess. Depth
+      // follows the plate's own thickness and the wall is thinner, since it is all hidden.
+      const wall = 0.3;
+      const h = Math.min(opts.pegWidth / 2, spot.clearance - wall);
+      if (h < 0.35) return null;                      // nowhere wide enough for a 0.7 mm pad
+      const depth = Math.max(0.5, Math.min(opts.pegDepth, thin));
+      const onBack = spot.p3.slice(); onBack[ax] = farRim[0][ax];
+      const onHost = spot.p3.slice(); onHost[ax] = got.hf.coord;
+      const boss = squareAt(farRim, backN, onBack, h - opts.clearance, wall);
+      const sock = squareAt(got.hf.ring3, got.hf.face.n, onHost, h, wall);
+      if (!boss || !sock) return null;
+      const sockAp = annulusPlan(got.hf.ring3, sock, got.hf.face.n);
+      if (!sockAp) return null;
+      const gap = Math.max(0, (farRim[0][ax] - got.hf.coord) * inward);
+      return {
+        boss,
+        stages: depth > 1.2 ? [{ off: depth - 0.4, inset: 0 }, { off: depth, inset: 0.3 }]
+                            : [{ off: depth, inset: 0 }],
+        sockOp: { faceTris: got.hf.face.tris, ap: sockAp, holeRing: sock,
+                  n: got.hf.face.n, dir: dirIn,
+                  stages: [{ off: depth + opts.clearance + gap, inset: 0 }] },
+        half: h, depth,
+      };
+    };
+
+    // Give each patch the plate's own thickness. Adjacent patches share that wall with
+    // opposite winding, so they butt together instead of overlapping, and their union is
+    // exactly the original plate.
+    const standalone = (why) => {
+      // Offsets are worked out for EVERY patch before anything is emitted. Skipping a patch
+      // whose rim already sits at the back plane would silently drop its faces — the visible-
+      // face guard caught exactly that, so the whole shell is kept intact in that case.
+      const offs = rimsOk ? rims.map(r =>
+        Math.abs(backCoord - r.rim.reduce((s, q) => s + q[ax], 0) / r.rim.length)) : [];
+      const keepWhole = (extra) => decalParts.push({ group: gOf(S[0]), gtris: S.slice(),
+        pIdx: palOfGroup[gOf(S[0])], note: `thin piece kept whole (${why}${extra || ""})` });
+      if (!rimsOk || offs.some(o => o < 0.05)) { keepWhole(); return; }
+
+      // biggest patch first, so the boss lands on the one with room for it
+      const order = rims.map((r, k) => k).sort((a, b) => {
+        const area = (i) => rims[i].gtris.reduce((s, t) => s + triGeo(verts, tris[t]).area, 0);
+        return area(b) - area(a);
+      });
+      const jobs = new Array(rims.length);
+      let socketOp = null;
+      for (const k of order) {
+        const r = rims[k], off = offs[k];
+        if (!socketOp) {
+          const b = bossFor(r, off);
+          if (b) {
+            // the boss prism has to oppose the back face's boss-hole edges; which winding
+            // does that depends on the ring, so both are tried and the one that audits clean
+            // with positive volume is kept
+            for (const bf of [true, false]) {
+              const cand = { group: r.group, gtris: r.gtris, pIdx: palOfGroup[r.group],
+                stack: { rim: r.rim, holes: r.holes, dir: dirIn, off,
+                         boss: b.boss, bossStages: b.stages, bossFlip: bf },
+                note: `${(b.half*2).toFixed(1)}mm pad seating ${b.depth.toFixed(1)}mm into a socket (${why})` };
+              const t = decalTrial(cand);
+              if (t && t.audit.bad === 0 && t.vol > 0) { jobs[k] = cand; socketOp = b.sockOp; break; }
+            }
+          }
+        }
+        if (!jobs[k]) {
+          const cand = { group: r.group, gtris: r.gtris, pIdx: palOfGroup[r.group],
+            skin: { loops: [r.rim, ...r.holes], dir: dirIn, off },
+            note: `${off.toFixed(2)}mm glue-on piece (${why})` };
+          const t = decalTrial(cand);
+          if (!t || t.vol <= 0) { keepWhole("; per-colour split inverted"); return; }
+          jobs[k] = cand;
+        }
+      }
+      decalParts.push(...jobs);
+      if (socketOp) addPunch(plan[got.host], socketOp);
+      for (const i of S) if (!fset.has(i)) hiddenDropped.add(i);
+    };
+
+    if (!rimsOk) { standalone("visible side has no single rim per colour"); continue; }
+    if (!got) { standalone("no single host face behind it"); continue; }
+
+    // ---- try the full snap-fit route: one pocket for the whole footprint, a tenon per patch
+    const host = got.host, hf = got.hf;
+    const shellLoops = boundaryLoops(tris, front);
+    if (shellLoops.length !== 1) { standalone("visible side has no single rim"); continue; }
+    let pocketRing = shellLoops[0].map(P3)
+      .map(q => { const w = q.slice(); w[ax] = hf.coord; return w; });
+    // If the footprint pokes past the host face, shrink it toward its own centre until it
+    // fits rather than giving up. The recess then matches the piece's outline slightly
+    // undersized instead of not existing at all — the visible face is untouched either way,
+    // since only the hidden back is narrowed. Giving up here is what left the eye with no
+    // indent to sit in.
+    let padInset = -1, fitted = null;
+    for (const d of [0, 0.15, 0.3, 0.5, 0.75, 1.0, 1.4]) {
+      const cand = d === 0 ? pocketRing : insetRing(pocketRing, d);
+      if (ringInside(hf.ring3, hf.face.n, cand, 0.2)) { padInset = d; fitted = cand; break; }
+    }
+    if (!fitted) { standalone("it overhangs the face behind it"); continue; }
+    const ap = annulusPlan(hf.ring3, fitted, hf.face.n);
+    if (!ap) { standalone("the face behind it could not be re-meshed"); continue; }
+    pocketRing = fitted;
+    const pocketOp = { faceTris: hf.face.tris, ap, holeRing: pocketRing,
+      n: hf.face.n, dir: dirIn, stages: [{ off: opts.jointDepth + opts.clearance, inset: 0 }] };
+    if (!freePunch(plan[host], pocketOp)) { standalone("that face already has a connector"); continue; }
+    // Every patch needs SOME tenon, or the ones without would sit over an open pocket. But
+    // the threshold here is far lower than the minimum feature width: these tenons all sit
+    // inside one shared pocket and only have to locate the piece, they carry no load. Using
+    // the full minimum-feature width meant a single 0.5 mm pupil disqualified the entire eye
+    // plate, so the whole thing fell back to being glued on flat.
+    if (rims.some(r => Math.min(...[0,1,2].filter(k => k !== ax).map(k => r.bb.size[k])) < 0.35)) {
+      standalone("a patch on it is narrower than a single extrusion"); continue;
+    }
+    // The tenon has to be narrowed by however much the recess was shrunk, or it will not fit
+    // — but a patch that is a thin RING (a black iris around a pupil is a 0.4 mm wide band on
+    // Darkrai) collapses inside-out long before it can give up that much. So each patch is
+    // built at the required inset and, only if that fails, at smaller ones; a patch that
+    // cannot take the inset its own recess needs is reported rather than silently interfering.
+    const tenonFor = (r, insetWanted) => {
+      const rimCoord = r.rim.reduce((s, q) => s + q[ax], 0) / r.rim.length;
+      const past = (rimCoord - hf.coord) * inward;   // how far the rim already sits inside
+      const minLat = Math.min(...[0,1,2].filter(k => k !== ax).map(k => r.bb.size[k]));
+      const ins = Math.min(insetWanted, minLat * 0.25);
+      const hIns = Math.min(opts.clearance, minLat * 0.25);   // holes never take the pad inset
+      return { group: r.group, gtris: r.gtris, pIdx: palOfGroup[r.group],
+        stacks: [{ ring3: r.rim, holes: r.holes, dir: dirIn, pIdx: palOfGroup[r.group],
+        // The tenon is narrowed by the amount the recess was shrunk so it still fits — but
+        // clamped to a quarter of the patch's own width. Applying the full inset to every
+        // patch collapsed the small ones inside-out: a 0.5 mm pupil cannot give up 1 mm of
+        // width, and one collapsed patch used to disqualify the whole eye plate.
+        stages: past > 0.02
+          ? [{ off: Math.max(0.4, opts.jointDepth - past), inset: ins, holeInset: hIns }]
+          : [{ off: -past, inset: 0 },
+             { off: -past + opts.jointDepth, inset: ins, holeInset: hIns }] }],
+        note: `presses ${opts.jointDepth.toFixed(1)}mm into a matching recess in the part behind it` };
+    };
+    const wanted = opts.clearance + padInset;
+    const tenonJobs = rims.map(r => {
+      const first = tenonFor(r, wanted);
+      if (decalVolume(first) > 0) return first;
+      // it cannot give up that much width; nothing smaller would fit the recess either
+      return null;
+    });
+    if (tenonJobs.some(j => !j)) {
+      standalone(padInset > 0
+        ? `its recess had to shrink ${padInset.toFixed(2)}mm to fit the face behind it, and a thin ring on it cannot`
+        : "a tenon on it would be inverted");
+      continue;
+    }
+    decalParts.push(...tenonJobs);
+    addPunch(plan[host], pocketOp);
+    // the plate's back faces are gone once the tenon replaces them; they sat against the host
+    // and were never visible, so they count as deliberately hidden, not lost
+    for (const i of S) if (!fset.has(i)) hiddenDropped.add(i);
+  }
+
+  /* ---- 6. connectors wherever two parts ABUT on a shared plane.
+
+     Any face coincident with an OPPOSING face of another part is hidden by that part, so it
+     is a legal place to cut. Faces are bucketed by the PLANE they lie in, so finding the
+     opposing one is a lookup rather than an O(n^2) scan.
+
+     The plane is not assumed to be axis-aligned. It was, and that was wrong: Darkrai's red
+     collar is a diagonal swoosh with only ~27 mm² of axis-aligned face on it out of dozens of
+     faces, so the whole part was skipped and left butting against the body with nothing
+     holding it. Chamfered and diagonal interfaces are the norm on these models, not the
+     exception. Two opposing faces share a plane once the plane's normal is canonicalised to
+     point a consistent way, which is what the bucket key does. ---- */
+  const faceIndex = new Map();
+  const planeKey = (n, d) => {
+    // flip so the first significant component is positive: opposing faces then agree
+    let s = Math.abs(n[0]) > 1e-6 ? Math.sign(n[0])
+          : Math.abs(n[1]) > 1e-6 ? Math.sign(n[1]) : Math.sign(n[2] || 1);
+    return [Math.round(n[0]*s*40), Math.round(n[1]*s*40), Math.round(n[2]*s*40),
+            Math.round(d*s*4)].join(",");
+  };
+  const partFaces = parts.map((p, pi) => {
+    const out = [];
+    for (const f of planarFaces(verts, tris, p.gtris, nb)) {
+      const loops = boundaryLoops(tris, f.tris);
+      if (loops.length !== 1 || loops[0].length < 3) continue;
+      let A = 0, c = [0,0,0];
+      for (const i of f.tris) {
+        const g = triGeo(verts, tris[i]);
+        A += g.area;
+        for (let k = 0; k < 3; k++) c[k] += g.c[k] * g.area;
+      }
+      if (A <= 0) continue;
+      c = c.map(v => v / A);
+      const rec = { pi, face: f, ring3: loops[0].map(P3), n: f.n, d: f.d, area: A, c };
+      out.push(rec);
+      const key = planeKey(f.n, f.d);
+      if (!faceIndex.has(key)) faceIndex.set(key, []);
+      faceIndex.get(key).push(rec);
+    }
+    return out;
+  });
+
+  const onPlane = (p, n, d) => {                     // project a point onto a plane
+    const t = v3dot(n, p) - d;
+    return [p[0] - n[0]*t, p[1] - n[1]*t, p[2] - n[2]*t];
+  };
+  const pairsDone = new Set();
+  for (let pi = 0; pi < parts.length; pi++) {
+    for (const F of partFaces[pi]) {
+      if (F.area < 3) continue;                      // no room for even a small peg
+      let best = null, bestClear = 0, bestMid = null;
+      for (const G of (faceIndex.get(planeKey(F.n, F.d)) || [])) {
+        if (G.pi === pi) continue;
+        if (v3dot(F.n, G.n) > -0.9) continue;        // must face each other
+        // Score by how deep inside BOTH outlines a peg could sit, never by overlap area:
+        // these outlines are rarely convex, so a large overlap can still have nowhere to put
+        // a peg while a modest one has plenty of room in the middle.
+        const spot = bestPegSpot(F.ring3, G.ring3, G.n);
+        if (!spot || spot.clearance <= bestClear) continue;
+        bestClear = spot.clearance;
+        best = G;
+        bestMid = spot.p3;
+      }
+      if (!best) continue;
+      const pairKey = Math.min(pi, best.pi) + "_" + Math.max(pi, best.pi) + "_" +
+                      planeKey(F.n, F.d);
+      if (pairsDone.has(pairKey)) continue;
+      // peg on the smaller face, socket in the larger — the small part plugs into the big one
+      const [A, B] = F.area <= best.area ? [F, best] : [best, F];
+      const onA = onPlane(bestMid, A.n, A.d);
+      const onB = onPlane(bestMid, B.n, B.d);
+      const wall = PEG_WALL * 0.6;
+      const half = Math.min(opts.pegWidth / 2, bestClear - wall);
+      if (half < 0.4) continue;
+      const pegSq = squareAt(A.ring3, A.n, onA, half - opts.clearance, wall);
+      const sockSq = squareAt(B.ring3, B.n, onB, half, wall);
+      if (!pegSq || !sockSq) continue;
+      const pegAp = annulusPlan(A.ring3, pegSq, A.n);
+      const sockAp = annulusPlan(B.ring3, sockSq, B.n);
+      if (!pegAp || !sockAp) continue;
+      const dir = A.n;                               // out of A, therefore into B
+      // B's plane may sit a little behind A's; deepen the socket by that much so the peg
+      // bottoms out in the socket rather than against solid material
+      const gap = Math.max(0, (-B.d) - A.d);
+      const pegOp = { faceTris: A.face.tris, ap: pegAp, holeRing: pegSq, n: A.n, dir,
+        stages: [{ off: opts.pegDepth - 0.6, inset: 0 }, { off: opts.pegDepth, inset: 0.35 }] };
+      const sockOp = { faceTris: B.face.tris, ap: sockAp, holeRing: sockSq, n: B.n, dir,
+        stages: [{ off: opts.pegDepth + opts.clearance + gap, inset: 0 }] };
+      // a peg with no socket would be an interference fit, so both sides go in or neither
+      if (!freePunch(plan[A.pi], pegOp) || !freePunch(plan[B.pi], sockOp)) continue;
+      addPunch(plan[A.pi], pegOp);
+      addPunch(plan[B.pi], sockOp);
+      pairsDone.add(pairKey);
+    }
+  }
+  /* ---- 7. build. Every part is audited, and a part that does not come out watertight is
+     rebuilt with its connectors dropped and its seams simply capped. A butt joint you glue
+     is a real part; a non-manifold one is wasted filament, so watertightness always wins. */
+  const buildOne = (pi, withConnectors) => {
+    const p = parts[pi], pl = plan[pi];
+    const part = newPart(null);
+    part.group = p.group;
+    part.color = p.color;
+    const consumed = new Set();
+    if (withConnectors) for (const op of pl.punch) for (const i of op.faceTris) consumed.add(i);
+    for (const i of p.gtris) if (!consumed.has(i)) copyTri(part, verts, tris[i]);
+    for (const i of (pl.fuse || [])) copyTri(part, verts, tris[i]);
+    for (const c of pl.caps) emitCap(part, c.ring3, c.cap, c.swap, c.pIdx);
+    for (const s of pl.stacks) {
+      const flip = s.flip === undefined ? true : s.flip;
+      if (withConnectors && addStack(part, s.ring3, s.dir, s.stages, s.pIdx, flip, s.holes)) part.connectors++;
+      else emitCap(part, s.ring3, planCap(s.ring3), !flip, s.pIdx);   // flat seam instead
+    }
+    if (withConnectors) for (const op of pl.punch) {
+      const hole = emitAnnulus(part, op.ap, palOfGroup[p.group]);   // pre-validated while planning
+      addStack(part, hole, op.dir, op.stages, palOfGroup[p.group], true);
+      part.connectors++;
+    }
+    for (const n of pl.notes) part.notes.push(n);
+    return part;
+  };
+  // A cap can leave a pinch — two sheets of the part meeting at a vertex — which shows up as
+  // an edge shared by more than two faces. repairMesh already knows how to split those, and
+  // it welds at 1e-4 mm, far below print resolution, so coordinates come back unchanged.
+  const tidy = (part) => {
+    const before = auditManifold(part.tris);
+    if (before.bad === 0) return part;
+    const fixed = repairMesh(part.verts.slice(), part.tris.map(t => ({ v: t.v.slice(), p: t.p })));
+    if (fixed.audit.bad >= before.bad) return part;
+    return { ...part, verts: fixed.verts, tris: fixed.tris };
+  };
+  // NOTE: there is deliberately no "drop this part's connectors if it fails the audit"
+  // fallback any more. A connector is two halves on two parts, and dropping one part's half
+  // left the other part's tenon buried in solid material — real, visible overlapping geometry.
+  // A few pinch edges are cosmetic and Bambu repairs them on import; an unpaired tenon is not.
+  const built = parts.map((_, pi) => tidy(buildOne(pi, true)));
+  for (const dp of decalParts) {
+    const part = newPart(null);
+    part.group = dp.group;
+    part.color = repColor[dp.group];
+    // same builder the trial used, so what was validated is what gets emitted
+    const good = buildDecal(part, dp);
+    if (dp.stack && dp.stack.boss) part.connectors++;
+    else if (dp.stacks) part.connectors += dp.stacks.length;
+    if (dp.note) part.notes.push(dp.note);
+    if (good) built.push(tidy(part));
+  }
+
+  /* ---- 8. audit and name ---- */
+  const out = [];
+  for (const part of built) {
+    if (!part.tris.length) continue;
+    let mn = [1/0,1/0,1/0], mx = [-1/0,-1/0,-1/0];
+    for (let i = 0; i < part.verts.length; i += 3) for (let k = 0; k < 3; k++) {
+      const q = part.verts[i+k];
+      if (q < mn[k]) mn[k] = q;
+      if (q > mx[k]) mx[k] = q;
+    }
+    // Enclosed volume, reported per part. A negative one is wound inside-out and would slice
+    // as garbage; a near-zero one prints as nothing. Both are worth seeing rather than
+    // discovering on the plate.
+    let vol = 0;
+    for (const tr of part.tris) {
+      const a = tr.v[0]*3, b = tr.v[1]*3, c = tr.v[2]*3, q = part.verts;
+      vol += q[a]  *(q[b+1]*q[c+2] - q[b+2]*q[c+1])
+           - q[a+1]*(q[b]  *q[c+2] - q[b+2]*q[c])
+           + q[a+2]*(q[b]  *q[c+1] - q[b+1]*q[c]);
+    }
+    vol /= 6;
+    if (vol < -0.01) part.notes.push("INVERTED: encloses negative volume, do not print this part");
+    else if (vol < 0.5) part.notes.push(`only ${vol.toFixed(2)}mm³ of material — too small to print`);
+    out.push({ verts: part.verts, tris: part.tris, group: part.group, color: part.color,
+               audit: auditManifold(part.tris), notes: part.notes, vol,
+               connectors: part.connectors,
+               dims: [mx[0]-mn[0], mx[1]-mn[1], mx[2]-mn[2]] });
+  }
+  /* ---- 9. enforce the promise. Every original triangle that anyone can see must reappear
+     in some part with its coordinates bit-identical. Caps are excluded (repairMesh invented
+     them to close hidden plug holes) and so are decal backs, which sit against their host.
+     This is checked, not asserted — if it ever fails the caller refuses to write the file. */
+  const triKey = (pts) => pts.map(p => p.map(x => Math.round(x*1e4)).join(",")).sort().join("|");
+  const want = new Set();
+  for (let i = 0; i < tris.length; i++)
+    if (!tris[i].cap && !hiddenDropped.has(i)) want.add(triKey(tris[i].v.map(P3)));
+  const got = new Set();
+  for (const p of out) for (const t of p.tris)
+    got.add(triKey(t.v.map(vi => [p.verts[vi*3], p.verts[vi*3+1], p.verts[vi*3+2]])));
+  let lost = 0;
+  for (const k of want) if (!got.has(k)) lost++;
+
+  /* ---- colour accounting. Two ways a detail can go missing even when every triangle
+     survives, and both are now measured rather than left to be discovered on the plate:
+       wrongColour — a triangle sitting in a part assigned to a DIFFERENT filament, so it
+                     prints in the host's colour. This is how a white pupil vanished into a
+                     blue iris.
+       colourless  — a filament in the palette that no part uses at all. On these models that
+                     only happens for colours which exist solely as zero-thickness sheets in
+                     the source (Meowth's whiskers are four 2-triangle quads with no
+                     thickness), which cannot print as anything. ---- */
+  let wrongColour = 0;
+  for (const p of out) wrongColour += p.tris.filter(t => groupOf[t.p] !== p.group).length;
+  const usedGroups = new Set(out.map(p => p.group));
+  const colourless = [];
+  for (let gi = 0; gi < repColor.length; gi++) if (!usedGroups.has(gi)) {
+    let n = 0;
+    for (const t of tris) if (groupOf[t.p] === gi) n++;
+    colourless.push({ group: gi, color: repColor[gi], srcTris: n });
+  }
+
+  window.__splitDebug = { parts, plan, shells, shellThin, isDecalShell, decalParts, out, verts, tris, buildOne,
+                          nb, gOf, groupOf, palOfGroup, decalVolume, opts };
+  out.sort((A, B) => B.tris.length - A.tris.length);
+  const seen = new Map();
+  for (const p of out) {
+    const h = `${hex2(p.color[0])}${hex2(p.color[1])}${hex2(p.color[2])}`;
+    const n = (seen.get(h) || 0) + 1;
+    seen.set(h, n);
+    p.name = `part-${String(p.group+1).padStart(2,"0")}-${h}` + (n > 1 ? `-${n}` : "");
+  }
+  return { parts: out, filaments: repColor, groupOf,
+           visible: { total: want.size, lost, hidden: hiddenDropped.size },
+           colour: { wrong: wrongColour, colourless } };
+}
+
+/* ============================================================ 3MF writer */
+const xmlEsc = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const hex2 = (n) => n.toString(16).padStart(2, "0").toUpperCase();
+const fmtNum = (n) => { const s = n.toFixed(3); return s.includes(".") ? s.replace(/\.?0+$/, "") : s; };
+
+// verts: Float64Array-ish [x,y,z,...] already in final mm coords (Z-up).
+// tris: [{v:[a,b,c], p: paletteIndex}], palette: [[r,g,b],...]
+// The mesh must stay ONE watertight object — splitting it per color produces open shells that
+// slice with empty layers. Colour is written TWICE, because the two readers differ:
+//   1. <m:colorgroup> from the 3MF Materials & Properties Extension, referenced per triangle
+//      via p1. This is the documented path a non-Bambu 3MF has to use: it is what triggers
+//      Bambu Studio's "Standard 3MF Color Parsing" dialog, and what OrcaSlicer/PrusaSlicer
+//      read natively. The previous <basematerials> block is a *physical material* list, not
+//      a colour list, and does not drive that dialog.
+//   2. paint_color, Bambu's own per-triangle painting attribute (the same data its manual
+//      Color Painting tool saves), kept as a belt-and-braces second channel.
+
+// paint_color encoding (TriangleSelector::serialize + FacetsAnnotation::get_triangle_as_string):
+// leaf triangle, filament N ⇒ state n=N: nibble n<<2 if n<3, else 0xC then nibble (n-3);
+// nibble stream is hex-encoded in reverse order. Filament 1→"4", 2→"8", 3→"0C", 4→"1C" …
+function paintColorFor(filament) {
+  const n = filament;
+  if (n < 3) return (n << 2).toString(16).toUpperCase();
+  let m = n - 3;
+  const nibbles = [0xC];
+  while (m >= 15) { nibbles.push(0xF); m -= 15; }
+  nibbles.push(m);
+  return nibbles.reverse().map(x => x.toString(16).toUpperCase()).join("");
+}
+
+async function write3MF(title, verts, tris, palette) {
+  const colHex = (c) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`;
+  const colors = palette.map((c) => `<m:color color="${colHex(c)}"/>`).join("\n   ");
+  const paint = palette.map((_, p) => paintColorFor(p + 1));
+  const vXml = [];
+  for (let i = 0; i < verts.length; i += 3)
+    vXml.push(`<vertex x="${fmtNum(verts[i])}" y="${fmtNum(verts[i + 1])}" z="${fmtNum(verts[i + 2])}"/>`);
+  const tXml = tris.map(t =>
+    `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${t.p}" paint_color="${paint[t.p]}"/>`);
+  const model =
+`<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
+ <metadata name="Title">${xmlEsc(title)}</metadata>
+ <metadata name="Application">Pokémon Quest 3MF Splitter</metadata>
+ <resources>
+  <m:colorgroup id="1">
+   ${colors}
+  </m:colorgroup>
+  <object id="2" name="${xmlEsc(title)}" type="model" pid="1" pindex="0">
+   <mesh>
+    <vertices>
+${vXml.join("\n")}
+    </vertices>
+    <triangles>
+${tXml.join("\n")}
+    </triangles>
+   </mesh>
+  </object>
+ </resources>
+ <build>
+  <item objectid="2"/>
+ </build>
+</model>`;
+  const settings =
+`<?xml version="1.0" encoding="UTF-8"?>
+<config>
+ <object id="2">
+  <metadata key="name" value="${xmlEsc(title)}"/>
+  <metadata key="extruder" value="1"/>
+ </object>
+</config>`;
+  const te = new TextEncoder();
+  return makeZip([
+    { name: "[Content_Types].xml", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+ <Default Extension="config" ContentType="text/xml"/>
+</Types>`) },
+    { name: "_rels/.rels", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`) },
+    { name: "3D/3dmodel.model", data: te.encode(model) },
+    { name: "Metadata/model_settings.config", data: te.encode(settings) },
+  ]);
+}
+
+/* ============================================================ 3MF writer, split mode
+
+   One 3MF holding every part as its own <object>, each with its filament assigned in
+   Metadata/model_settings.config (the channel Bambu Studio reads for per-object extruder)
+   and its colour also carried in the standard m:colorgroup so other slicers see it. Parts
+   are laid out in a grid on the plate so the file slices as-is; a part that also carries
+   painted faces (a feature too narrow to split off) keeps its paint_color per triangle.
+*/
+async function write3MFParts(title, parts, filaments, groupOf, opts) {
+  const colHex = (c) => `#${hex2(c[0])}${hex2(c[1])}${hex2(c[2])}`;
+  const colors = filaments.map((c) => `<m:color color="${colHex(c)}"/>`).join("\n   ");
+  const paint = filaments.map((_, g) => paintColorFor(g + 1));
+
+  // grid layout: widest first, wrapped to the plate, 4 mm gaps
+  const place = [], gap = 4, plate = opts.plate;
+  const order = parts.map((p, i) => i).sort((a, b) => parts[b].dims[0] - parts[a].dims[0]);
+  let cx = gap, cy = gap, rowH = 0;
+  for (const i of order) {
+    const d = parts[i].dims;
+    if (cx + d[0] > plate - gap && cx > gap) { cx = gap; cy += rowH + gap; rowH = 0; }
+    place[i] = [cx + d[0]/2, cy + d[1]/2];
+    cx += d[0] + gap;
+    rowH = Math.max(rowH, d[1]);
+  }
+  const usedY = cy + rowH + gap;
+
+  const objs = [], items = [], cfg = [];
+  parts.forEach((p, i) => {
+    const oid = i + 2;                                        // 1 is the colorgroup
+    let mn = [1/0,1/0,1/0];
+    for (let k = 0; k < p.verts.length; k += 3) for (let a = 0; a < 3; a++)
+      if (p.verts[k+a] < mn[a]) mn[a] = p.verts[k+a];
+    const vXml = [];
+    for (let k = 0; k < p.verts.length; k += 3)
+      vXml.push(`<vertex x="${fmtNum(p.verts[k]-mn[0])}" y="${fmtNum(p.verts[k+1]-mn[1])}" z="${fmtNum(p.verts[k+2]-mn[2])}"/>`);
+    const tXml = p.tris.map(t => {
+      const g = groupOf[t.p] === undefined ? p.group : groupOf[t.p];
+      return `<triangle v1="${t.v[0]}" v2="${t.v[1]}" v3="${t.v[2]}" p1="${g}" paint_color="${paint[g]}"/>`;
+    });
+    objs.push(
+`  <object id="${oid}" name="${xmlEsc(p.name)}" type="model" pid="1" pindex="${p.group}">
+   <mesh>
+    <vertices>
+${vXml.join("\n")}
+    </vertices>
+    <triangles>
+${tXml.join("\n")}
+    </triangles>
+   </mesh>
+  </object>`);
+    const px = place[i][0] - p.dims[0]/2, py = place[i][1] - p.dims[1]/2;
+    items.push(`  <item objectid="${oid}" transform="1 0 0 0 1 0 0 0 1 ${fmtNum(px)} ${fmtNum(py)} 0" printable="1"/>`);
+    cfg.push(
+` <object id="${oid}">
+  <metadata key="name" value="${xmlEsc(p.name)}"/>
+  <metadata key="extruder" value="${p.group + 1}"/>
+ </object>`);
+  });
+
+  const model =
+`<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:m="http://schemas.microsoft.com/3dmanufacturing/material/2015/02">
+ <metadata name="Title">${xmlEsc(title)}</metadata>
+ <metadata name="Application">Pokémon Quest 3MF Splitter</metadata>
+ <resources>
+  <m:colorgroup id="1">
+   ${colors}
+  </m:colorgroup>
+${objs.join("\n")}
+ </resources>
+ <build>
+${items.join("\n")}
+ </build>
+</model>`;
+  const settings =
+`<?xml version="1.0" encoding="UTF-8"?>
+<config>
+${cfg.join("\n")}
+</config>`;
+  const te = new TextEncoder();
+  const zip = await makeZip([
+    { name: "[Content_Types].xml", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+ <Default Extension="config" ContentType="text/xml"/>
+</Types>`) },
+    { name: "_rels/.rels", data: te.encode(
+`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>`) },
+    { name: "3D/3dmodel.model", data: te.encode(model) },
+    { name: "Metadata/model_settings.config", data: te.encode(settings) },
+  ]);
+  return { zip, fits: (cx <= plate && usedY <= plate), usedY };
+}
+
+// Round-trip check for the split file: every part must survive as its own mesh object with
+// a build item and an extruder assignment, and the triangle total must match.
+async function validate3MFParts(zipBytes, parts, nFil) {
+  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+  if (dv.getUint32(0, true) !== 0x04034b50) throw new Error("3MF validation: not a zip");
+  let p = 0;
+  const td = new TextDecoder(), files = {};
+  while (p + 30 <= zipBytes.length && dv.getUint32(p, true) === 0x04034b50) {
+    const method = dv.getUint16(p + 8, true);
+    const csize = dv.getUint32(p + 18, true);
+    const nlen = dv.getUint16(p + 26, true);
+    const name = td.decode(zipBytes.subarray(p + 30, p + 30 + nlen));
+    let data = zipBytes.subarray(p + 30 + nlen, p + 30 + nlen + csize);
+    if (method === 8) {
+      const ds = new DecompressionStream("deflate-raw");
+      data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer());
+    }
+    files[name] = td.decode(data);
+    p += 30 + nlen + csize;
+  }
+  const doc = new DOMParser().parseFromString(files["3D/3dmodel.model"] || "", "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
+  const meshObjs = [...doc.getElementsByTagName("object")].filter(o => o.getElementsByTagName("mesh").length);
+  if (meshObjs.length !== parts.length)
+    throw new Error(`3MF validation: ${meshObjs.length} mesh objects, expected ${parts.length}`);
+  const items = doc.getElementsByTagName("item");
+  if (items.length !== parts.length)
+    throw new Error(`3MF validation: ${items.length} build items, expected ${parts.length}`);
+  const nTri = parts.reduce((s, q) => s + q.tris.length, 0);
+  const gotTri = doc.getElementsByTagName("triangle").length;
+  if (gotTri !== nTri) throw new Error(`3MF validation: ${gotTri} triangles, expected ${nTri}`);
+  const cg = doc.getElementsByTagName("m:colorgroup");
+  if (!cg.length || cg[0].getElementsByTagName("m:color").length !== nFil)
+    throw new Error("3MF validation: colorgroup does not match the filament list");
+  const cfgDoc = new DOMParser().parseFromString(files["Metadata/model_settings.config"] || "", "application/xml");
+  if (cfgDoc.querySelector("parsererror")) throw new Error("3MF validation: config XML malformed");
+  const ext = [...cfgDoc.getElementsByTagName("object")]
+    .filter(o => [...o.getElementsByTagName("metadata")].some(m => m.getAttribute("key") === "extruder"));
+  if (ext.length !== parts.length)
+    throw new Error(`3MF validation: ${ext.length} objects carry an extruder, expected ${parts.length}`);
+  log(`3MF validated: ${parts.length} parts, ${nFil} filaments, ${(zipBytes.length/1024).toFixed(1)} KB`, "ok");
+}
+
+/* ============================================================ conversion pipeline */
+// ctx = { label, objName, getText(name)→Promise<string|null>, getBytes(name)→Promise<Uint8Array|null> }
+// shiny: only meaningful for scheme-B (pq*) models — swaps the main body atlas texture.
+async function convertModel(ctx, { shiny = false } = {}) {
+  const opts = {
+    height: Math.max(1, parseFloat($("#opt-height").value) || 50),
+    merge: Math.max(0, parseInt($("#opt-merge").value, 10) || 0),
+    maxColors: Math.max(0, parseInt($("#opt-maxcol").value, 10) || 0),
+    dropAlpha: $("#opt-alpha").checked,
+  };
+  const objText = await ctx.getText(ctx.objName);
+  if (objText === null) throw new Error(`could not read ${ctx.objName}`);
+  const obj = parseOBJ(objText);
+  log(`${ctx.label}: ${obj.pos.length / 3} verts, ${obj.tris.length} tris`, "dim");
+
+  // materials + textures
+  let mats = {};
+  if (obj.mtllib) {
+    const mtlText = await ctx.getText(obj.mtllib);
+    if (mtlText !== null) mats = parseMTL(mtlText);
+    else log(`${ctx.label}: mtl "${obj.mtllib}" not found — using flat gray`, "err");
+  }
+  const objBase = ctx.objName.replace(/\.obj$/i, "");
+  let shinyTexName = null;
+  if (shiny) {
+    for (const cand of [objBase + "S.png", objBase + "s.png"]) {
+      if (await ctx.getBytes(cand) !== null) { shinyTexName = cand; break; }
+    }
+    if (!shinyTexName) throw new Error(`no shiny texture found for ${ctx.objName} (tried ${objBase}S.png / s.png)`);
+    log(`${ctx.label}: shiny texture = ${shinyTexName}`, "ok");
+  }
+  const textures = {};       // material name → decoded texture (or null)
+  for (const [name, m] of Object.entries(mats)) {
+    if (!m.mapKd) { textures[name] = null; continue; }
+    // shiny swap applies only to the main body atlas (<objbase>.png); eyes/fx maps stay
+    const isMainAtlas = m.mapKd.toLowerCase() === (objBase.split("/").pop() + ".png").toLowerCase();
+    const wanted = (shinyTexName && isMainAtlas) ? shinyTexName : m.mapKd;
+    const bytes = await ctx.getBytes(wanted);
+    if (bytes === null) {
+      log(`${ctx.label}: texture "${wanted}" not found — material "${name}" falls back to Kd color`, "err");
+      textures[name] = null;
+    } else {
+      textures[name] = await decodePNG(bytes);
+    }
+  }
+
+  // bake per-face colors
+  const faceColors = [], keptTris = [];
+  let dropped = 0;
+  for (const t of obj.tris) {
+    const mat = mats[t.m] || null;
+    const tex = mat ? textures[t.m] : null;
+    let c;
+    if (tex && t.t[0] >= 0) {
+      const uvs = t.t.map(i => [obj.uv[i * 2], obj.uv[i * 2 + 1]]);
+      c = bakeTriangleColor(tex, uvs);
+      if (opts.dropAlpha && c[3] < 128) { dropped++; continue; }
+    } else {
+      const kd = mat ? mat.kd : [0.8, 0.8, 0.8];
+      c = [Math.round(kd[0] * 255), Math.round(kd[1] * 255), Math.round(kd[2] * 255), 255];
+    }
+    faceColors.push(c);
+    keptTris.push(t);
+  }
+  if (dropped) log(`${ctx.label}: dropped ${dropped} transparent faces`, "dim");
+  if (!keptTris.length) throw new Error("no printable faces after filtering");
+  const { palette, indexOf } = mergePalette(faceColors, opts.merge, opts.maxColors);
+
+  // compact vertices to only those used, transform Y-up → Z-up, scale, floor
+  const used = new Map();
+  const outVerts = [];
+  const remap = (i) => {
+    let r = used.get(i);
+    if (r === undefined) {
+      r = outVerts.length / 3;
+      used.set(i, r);
+      // OBJ (x, y-up, z) → 3MF (x, -z, y) so the model stands on the plate
+      outVerts.push(obj.pos[i * 3], -obj.pos[i * 3 + 2], obj.pos[i * 3 + 1]);
+    }
+    return r;
+  };
+  const outTris = keptTris.map((t, i) => ({ v: t.v.map(remap), p: indexOf(faceColors[i]) }));
+  let minX = 1/0, minY = 1/0, minZ = 1/0, maxX = -1/0, maxY = -1/0, maxZ = -1/0;
+  for (let i = 0; i < outVerts.length; i += 3) {
+    minX = Math.min(minX, outVerts[i]);     maxX = Math.max(maxX, outVerts[i]);
+    minY = Math.min(minY, outVerts[i + 1]); maxY = Math.max(maxY, outVerts[i + 1]);
+    minZ = Math.min(minZ, outVerts[i + 2]); maxZ = Math.max(maxZ, outVerts[i + 2]);
+  }
+  const scale = opts.height / Math.max(1e-9, maxZ - minZ);
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  for (let i = 0; i < outVerts.length; i += 3) {
+    outVerts[i]     = (outVerts[i]     - cx)   * scale;
+    outVerts[i + 1] = (outVerts[i + 1] - cy)   * scale;
+    outVerts[i + 2] = (outVerts[i + 2] - minZ) * scale;
+  }
+  const dims = [(maxX - minX) * scale, (maxY - minY) * scale, (maxZ - minZ) * scale];
+
+  const fixed = repairMesh(outVerts, outTris);
+  const bits = [];
+  if (fixed.nDup)       bits.push(`${fixed.nDup} duplicate tris removed`);
+  if (fixed.nDegen)     bits.push(`${fixed.nDegen} collapsed tris removed`);
+  if (fixed.nVertSplit) bits.push(`${fixed.nVertSplit} non-manifold vertices split`);
+  if (fixed.holes)      bits.push(`${fixed.holes} openings capped (+${fixed.capTris} tris)`);
+  if (bits.length) log(`${ctx.label}: ${bits.join(", ")}`, "dim");
+  if (fixed.unclosed)
+    log(`${ctx.label}: ${fixed.unclosed} boundary edge(s) formed no closed loop and were left uncapped`, "err");
+  const a = fixed.audit;
+  if (a.bad === 0) log(`${ctx.label}: mesh is closed and manifold (0 bad edges)`, "ok");
+  else log(`${ctx.label}: ${a.bad} non-manifold edge(s) remain — ${a.open} open, ${a.over} shared by 3+ faces, ${a.flipped} mis-wound`, "err");
+
+  const title = ctx.label + (shiny ? " (Shiny)" : "");
+
+  if ($("#opt-split").checked) {
+    // A few bad edges in the base mesh are common across this library (most models have a
+    // handful out of ~800 triangles). Refusing to split those would rule out most of the
+    // roster, and the decomposition tolerates them: triAdjacency ignores edges that are not
+    // shared by exactly two faces, and boundaryLoops works off edge surplus. The real gates
+    // are the per-part audit and the visible-face check below, so this only warns.
+    if (a.bad !== 0)
+      log(`${ctx.label}: base mesh has ${a.bad} bad edge(s); splitting anyway — check the per-part audit`, "err");
+    const sopts = {
+      groupTol:  Math.max(0, parseFloat($("#opt-grouptol").value) || 0),
+      minThick:  Math.max(0.2, parseFloat($("#opt-minthick").value) || 2.5),
+      minFeature:Math.max(0.1, parseFloat($("#opt-minfeat").value) || 0.8),
+      pegWidth:  Math.max(0.8, parseFloat($("#opt-pegw").value) || 2.4),
+      pegDepth:  Math.max(0.5, parseFloat($("#opt-pegd").value) || 3),
+      clearance: Math.max(0,   parseFloat($("#opt-clear").value) || 0),
+      jointDepth: Math.max(0.5, parseFloat($("#opt-jointdepth").value) || 2.5),
+      mergeBelow: Math.max(0,  parseFloat($("#opt-mergebelow").value) || 0),
+      plate:     Math.max(50,  parseFloat($("#opt-plate").value) || 256),
+    };
+    sopts.minPegFaceArea = (sopts.pegWidth + 2*PEG_WALL) ** 2 * 0.6;
+    // debug-only A/B switch: suppress the dent relief-extension to test whether it was needed
+    sopts.noRelief = window.__noRelief === true;
+    const split = splitIntoParts(fixed.verts, fixed.tris, palette, sopts);
+    if (!split.parts.length) throw new Error("split produced no parts");
+    const bad = split.parts.filter(p => p.audit.bad > 0);
+    const conn = split.parts.reduce((s, p) => s + p.connectors, 0);
+    log(`${ctx.label}: split into ${split.parts.length} parts, ${split.filaments.length} filaments, ${conn} connector sites`, "dim");
+    // the whole point of the mode: refuse to write a file that changed a visible face
+    if (split.visible.lost)
+      throw new Error(`split would change the model: ${split.visible.lost} of ${split.visible.total} visible faces did not survive`);
+    log(`${ctx.label}: all ${split.visible.total} visible faces preserved bit-identically (${split.visible.hidden} hidden faces removed or re-meshed)`, "ok");
+    // a detail can be present as geometry yet still print in the wrong colour
+    if (split.colour.wrong)
+      log(`${ctx.label}: ${split.colour.wrong} triangle(s) sit in a part of another filament and will print the wrong colour`, "err");
+    else
+      log(`${ctx.label}: every colour region prints in its own filament`, "ok");
+    for (const c of split.colour.colourless)
+      log(`${ctx.label}: filament ${c.group + 1} (#${hex2(c.color[0])}${hex2(c.color[1])}${hex2(c.color[2])}) has no part — its ${c.srcTris} source triangle(s) are zero-thickness sheets that cannot print`, "err");
+    const inverted = split.parts.filter(p => p.vol < -0.01);
+    const tiny = split.parts.filter(p => p.vol >= -0.01 && p.vol < 0.5);
+    if (inverted.length)
+      log(`${ctx.label}: ${inverted.length} INVERTED part(s) — ${inverted.map(p => p.name).join(", ")} — do not print these`, "err");
+    if (tiny.length)
+      log(`${ctx.label}: ${tiny.length} part(s) under 0.5mm³, too small to print — ${tiny.map(p => p.name).join(", ")}`, "err");
+    for (const p of split.parts) for (const n of p.notes) log(`${ctx.label}: ${p.name} — ${n}`, "dim");
+    if (bad.length)
+      log(`${ctx.label}: ${bad.length} part(s) not watertight — ${bad.map(p => p.name + ":" + p.audit.bad).join(", ")}`, "err");
+    else
+      log(`${ctx.label}: all ${split.parts.length} parts closed and manifold`, "ok");
+    const { zip, fits, usedY } = await write3MFParts(title, split.parts, split.filaments, split.groupOf, sopts);
+    await validate3MFParts(zip, split.parts, split.filaments.length);
+    if (!fits) log(`${ctx.label}: layout needs ${usedY.toFixed(0)} mm of plate depth — hit Arrange in Bambu Studio`, "err");
+    return {
+      title: title + " (split)", zip, palette: split.filaments, dims, audit: a,
+      nVerts: fixed.verts.length / 3, nTris: fixed.tris.length,
+      verts: fixed.verts, tris: fixed.tris,
+      split, splitParts: split.parts,
+    };
+  }
+
+  const zip = await write3MF(title, fixed.verts, fixed.tris, palette);
+  await validate3MF(zip, fixed.tris.length, palette.length);   // throws on failure
+  return {
+    title, zip, palette, dims, audit: a,
+    nVerts: fixed.verts.length / 3, nTris: fixed.tris.length,
+    verts: fixed.verts, tris: fixed.tris,
+  };
+}
+
+// Round-trip sanity check: unzip (inflating if needed), XML must parse, per-part structure
+// and the Bambu model_settings.config must line up with what we meant to write.
+async function validate3MF(zipBytes, nTris, nColors) {
+  const dv = new DataView(zipBytes.buffer, zipBytes.byteOffset, zipBytes.byteLength);
+  if (dv.getUint32(0, true) !== 0x04034b50) throw new Error("3MF validation: not a zip");
+  let p = 0;
+  const td = new TextDecoder();
+  const files = {};
+  while (p + 30 <= zipBytes.length && dv.getUint32(p, true) === 0x04034b50) {
+    const method = dv.getUint16(p + 8, true);
+    const csize = dv.getUint32(p + 18, true);
+    const nlen = dv.getUint16(p + 26, true);
+    const name = td.decode(zipBytes.subarray(p + 30, p + 30 + nlen));
+    let data = zipBytes.subarray(p + 30 + nlen, p + 30 + nlen + csize);
+    if (method === 8) {
+      const ds = new DecompressionStream("deflate-raw");
+      data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer());
+    }
+    files[name] = td.decode(data);
+    p += 30 + nlen + csize;
+  }
+  const modelXml = files["3D/3dmodel.model"];
+  if (!modelXml) throw new Error("3MF validation: 3D/3dmodel.model missing");
+  const doc = new DOMParser().parseFromString(modelXml, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("3MF validation: model XML malformed");
+  const meshObjs = [...doc.getElementsByTagName("object")].filter(o => o.getElementsByTagName("mesh").length);
+  if (meshObjs.length !== 1) throw new Error(`3MF validation: expected 1 mesh object, found ${meshObjs.length}`);
+  const triEls = [...doc.getElementsByTagName("triangle")];
+  if (triEls.length !== nTris) throw new Error(`3MF validation: triangle count mismatch (${triEls.length}/${nTris})`);
+  const unpainted = triEls.filter(el => !el.getAttribute("paint_color")).length;
+  if (unpainted) throw new Error(`3MF validation: ${unpainted} triangles missing paint_color`);
+  const states = new Set(triEls.map(el => el.getAttribute("paint_color")));
+  if (states.size > nColors)
+    throw new Error(`3MF validation: ${states.size} distinct paint states, expected at most ${nColors}`);
+  // the colorgroup is the channel Bambu Studio's Standard 3MF Color Parsing dialog reads
+  const cg = doc.getElementsByTagName("m:colorgroup");
+  if (!cg.length) throw new Error("3MF validation: m:colorgroup missing");
+  if (cg[0].getElementsByTagName("m:color").length !== nColors)
+    throw new Error("3MF validation: colorgroup size does not match palette");
+  const noP1 = triEls.filter(el => el.getAttribute("p1") === null).length;
+  if (noP1) throw new Error(`3MF validation: ${noP1} triangles missing p1 colour index`);
+  const cfg = files["Metadata/model_settings.config"];
+  if (!cfg) throw new Error("3MF validation: model_settings.config missing");
+  if (new DOMParser().parseFromString(cfg, "application/xml").querySelector("parsererror"))
+    throw new Error("3MF validation: config XML malformed");
+  log(`3MF validated: 1 solid object, ${nColors} colors (colorgroup + paint_color), ${(zipBytes.length / 1024).toFixed(1)} KB`, "ok");
+}
+
+/* ============================================================ results UI */
+const results = [];
+window.__results = results;   // debug/test hook
+function addResultCard(res) {
+  results.push(res);
+  const card = document.createElement("div");
+  card.className = "card";
+  const sws = res.palette.slice(0, 24).map(c =>
+    `<span class="sw" style="background:rgb(${c[0]},${c[1]},${c[2]})"></span>`).join("");
+  // in split mode the number that matters is whether every PART is watertight, not the
+  // pre-split mesh — a part is what actually goes to the slicer
+  const bad = res.splitParts
+    ? res.splitParts.reduce((s, p) => s + p.audit.bad, 0)
+    : (res.audit ? res.audit.bad : 0);
+  const health = bad === 0
+    ? `<span style="color:var(--ok)">✓ watertight</span>`
+    : `<span style="color:var(--err)">⚠ ${bad} bad edge${bad === 1 ? "" : "s"}</span>`;
+  const partInfo = res.splitParts
+    ? ` · <b>${res.splitParts.length} parts</b> · ${res.splitParts.reduce((s,p)=>s+p.connectors,0)} connectors`
+    : "";
+  card.innerHTML =
+    `<span class="name">${xmlEsc(res.title)}</span>
+     <span class="stats">${res.nTris} tris · ${res.palette.length} ${res.splitParts ? "filaments" : "colors"} · ${res.dims.map(d => d.toFixed(0)).join("×")} mm · ${health}${partInfo}</span>
+     <span class="swatches">${sws}</span>
+     <div style="flex:1 1 100%">${partsTable(res)}</div>`;
+  const btn = document.createElement("button");
+  btn.className = "small";
+  btn.textContent = "Download .3mf";
+  btn.onclick = () => downloadBytes(res.zip, safeName(res.title) + ".3mf");
+  const pv = document.createElement("button");
+  pv.className = "small ghost";
+  pv.textContent = "Preview";
+  pv.onclick = () => showPreview(res);
+  card.appendChild(pv);
+  card.appendChild(btn);
+  $("#cards").appendChild(card);
+  $("#dl-all").style.display = results.length > 1 ? "" : "none";
+  showPreview(res);
+}
+$("#opt-split").onchange = (e) => {
+  $("#split-opts").style.display = e.target.checked ? "" : "none";
+};
+// re-render the last previewed result when the explode slider moves
+let pvLast = null;
+$("#opt-explode").oninput = () => { if (pvLast) showPreview(pvLast); };
+// Per-part breakdown under the card: size, filament, connectors, and any note about a
+// feature that had to stay fused. Rendered from the same data the 3MF was written from.
+function partsTable(res) {
+  if (!res.splitParts) return "";
+  const rows = res.splitParts.map(p => {
+    const ok = p.audit.bad === 0;
+    return `<tr>
+      <td><span class="sw" style="background:rgb(${p.color[0]},${p.color[1]},${p.color[2]})"></span></td>
+      <td style="font-family:Consolas,monospace">${xmlEsc(p.name)}</td>
+      <td>${p.dims.map(d => d.toFixed(1)).join("×")} mm</td>
+      <td>${p.vol === undefined ? "" : p.vol.toFixed(0) + " mm³"}</td>
+      <td>filament ${p.group + 1}</td>
+      <td>${p.connectors ? p.connectors + " conn" : "<span style='color:var(--dim)'>butt joint</span>"}</td>
+      <td>${ok ? "<span style='color:var(--ok)'>✓</span>" : `<span style='color:var(--err)'>⚠ ${p.audit.bad}</span>`}</td>
+    </tr>`;
+  }).join("");
+  return `<table style="width:100%;border-collapse:collapse;font-size:0.78rem;margin-top:0.4rem">${rows}</table>`;
+}
+function safeName(s) { return s.replace(/[\\/:*?"<>|]/g, "_"); }
+function downloadBytes(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+$("#dl-all").onclick = async () => {
+  const zip = await makeZip(results.map(r => ({ name: safeName(r.title) + ".3mf", data: r.zip })));
+  downloadBytes(zip, "quest-3mf-models.zip");
+};
+
+/* ============================================================ 3D preview (three.js, optional) */
+let THREE_NS = null, pvScene = null, pvRenderer = null, pvCamera = null, pvMesh = null;
+let pvTheta = 0.7, pvPhi = 1.15, pvDist = 120, pvTarget = [0, 0, 25];
+async function ensureThree() {
+  if (THREE_NS) return THREE_NS;
+  THREE_NS = await import("https://unpkg.com/three@0.160.0/build/three.module.js");
+  const cv = $("#preview");
+  pvRenderer = new THREE_NS.WebGLRenderer({ canvas: cv, antialias: true });
+  pvRenderer.setSize(cv.clientWidth, cv.clientHeight, false);
+  pvCamera = new THREE_NS.PerspectiveCamera(40, cv.clientWidth / cv.clientHeight, 0.1, 5000);
+  pvScene = new THREE_NS.Scene();
+  pvScene.background = new THREE_NS.Color(0x0d1226);
+  pvScene.add(new THREE_NS.HemisphereLight(0xffffff, 0x445577, 1.1));
+  const dl = new THREE_NS.DirectionalLight(0xffffff, 1.2);
+  dl.position.set(1, -2, 3);
+  pvScene.add(dl);
+  const grid = new THREE_NS.GridHelper(120, 12, 0x3a4670, 0x232b4a);
+  grid.rotation.x = Math.PI / 2;   // our world is Z-up
+  pvScene.add(grid);
+  // minimal orbit: drag rotate, wheel zoom
+  let drag = null;
+  cv.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    pvTheta -= (e.clientX - drag[0]) * 0.008;
+    pvPhi = Math.min(3.0, Math.max(0.15, pvPhi - (e.clientY - drag[1]) * 0.008));
+    drag = [e.clientX, e.clientY];
+  });
+  cv.addEventListener("pointerup", () => drag = null);
+  cv.addEventListener("wheel", e => { e.preventDefault(); pvDist *= Math.exp(e.deltaY * 0.001); }, { passive: false });
+  (function tick() {
+    requestAnimationFrame(tick);
+    if (!drag) pvTheta += 0.003;
+    pvCamera.position.set(
+      pvTarget[0] + pvDist * Math.sin(pvPhi) * Math.cos(pvTheta),
+      pvTarget[1] + pvDist * Math.sin(pvPhi) * Math.sin(pvTheta),
+      pvTarget[2] + pvDist * Math.cos(pvPhi));
+    pvCamera.up.set(0, 0, 1);
+    pvCamera.lookAt(pvTarget[0], pvTarget[1], pvTarget[2]);
+    pvRenderer.render(pvScene, pvCamera);
+  })();
+  return THREE_NS;
+}
+// In split mode each part is drawn in its filament colour and nudged away from the model's
+// centre, so the seams and which piece is which are both visible at a glance.
+function previewGeometry(res) {
+  const parts = res.splitParts;
+  const mid = [0, 1, 2].map(k => {
+    let mn = 1/0, mx = -1/0;
+    for (const p of parts) for (let i = 0; i < p.verts.length; i += 3) {
+      const q = p.verts[i+k];
+      if (q < mn) mn = q;
+      if (q > mx) mx = q;
+    }
+    return (mn + mx) / 2;
+  });
+  return { parts, mid, spread: parseFloat($("#opt-explode").value) || 0 };
+}
+async function showPreview(res) {
+  pvLast = res;
+  try {
+    const T = await ensureThree();
+    if (pvMesh) { pvScene.remove(pvMesh); pvMesh.geometry.dispose(); pvMesh.material.dispose(); }
+    let flat;
+    if (res.splitParts) {
+      const g = previewGeometry(res);
+      flat = [];
+      for (const p of g.parts) {
+        // push each piece out along the direction from the model centre to its own centre
+        let pc = [0, 0, 0], n = p.verts.length / 3;
+        for (let i = 0; i < p.verts.length; i += 3)
+          for (let k = 0; k < 3; k++) pc[k] += p.verts[i+k] / n;
+        const d = v3norm([pc[0]-g.mid[0], pc[1]-g.mid[1], pc[2]-g.mid[2]]);
+        const off = [d[0]*g.spread, d[1]*g.spread, d[2]*g.spread];
+        for (const t of p.tris) flat.push({ t, verts: p.verts, c: p.color, off });
+      }
+    } else {
+      flat = res.tris.map(t => ({ t, verts: res.verts, c: res.palette[t.p], off: [0,0,0] }));
+    }
+    const n = flat.length;
+    const posArr = new Float32Array(n * 9), colArr = new Float32Array(n * 9);
+    for (let i = 0; i < n; i++) {
+      const { t, verts, c, off } = flat[i];
+      for (let k = 0; k < 3; k++) {
+        const vi = t.v[k];
+        posArr.set([verts[vi*3] + off[0], verts[vi*3+1] + off[1], verts[vi*3+2] + off[2]],
+                   i * 9 + k * 3);
+        colArr.set([c[0] / 255, c[1] / 255, c[2] / 255], i * 9 + k * 3);
+      }
+    }
+    const g = new T.BufferGeometry();
+    g.setAttribute("position", new T.BufferAttribute(posArr, 3));
+    g.setAttribute("color", new T.BufferAttribute(colArr, 3));
+    g.computeVertexNormals();
+    pvMesh = new T.Mesh(g, new T.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+    pvScene.add(pvMesh);
+    const h = res.dims[2];
+    pvTarget = [0, 0, h / 2];
+    pvDist = Math.max(...res.dims) * 2.4;
+    $("#preview-label").textContent = res.title;
+  } catch (e) {
+    $("#preview-label").textContent = "(3D preview unavailable — conversion unaffected: " + e.message + ")";
+  }
+}
+
+const QUEST_DEX_EMBEDDED = [
+{id:"q0001",d:1,n:"Bulbasaur",o:"#0001 Bulbasaur/001 - Bulbasaur.obj",s:"001 - Bulbasaur - Shiny.png"},
+{id:"q0002",d:2,n:"Ivysaur",o:"#0002 Ivysaur/002 - Ivysaur.obj",s:"002 - Ivysaur - Shiny.png"},
+{id:"q0003",d:3,n:"Venusaur",o:"#0003 Venusaur/003 - Venusaur.obj",s:"003 - Venusaur - Shiny.png"},
+{id:"q0004",d:4,n:"Charmander",o:"#0004 Charmander/004 - Charmander.obj",s:"004 - Charmander - Shiny.png"},
+{id:"q0005",d:5,n:"Charmeleon",o:"#0005 Charmeleon/005 - Charmeleon.obj",s:"005 - Charmeleon - Shiny.png"},
+{id:"q0006",d:6,n:"Charizard",o:"#0006 Charizard/006 - Charizard.obj",s:"006 - Charizard - Shiny.png"},
+{id:"q0007",d:7,n:"Squirtle",o:"#0007 Squirtle/007 - Squirtle.obj",s:"007 - Squirtle - Shiny.png"},
+{id:"q0008",d:8,n:"Wartortle",o:"#0008 Wartortle/008 - Wartortle.obj",s:"008 - Wartortle - Shiny.png"},
+{id:"q0009",d:9,n:"Blastoise",o:"#0009 Blastoise/009 - Blastoise.obj",s:"009 - Blastoise - Shiny.png"},
+{id:"q0010",d:10,n:"Caterpie",o:"#0010 Caterpie/010 - Caterpie.obj",s:"010 - Caterpie - Shiny.png"},
+{id:"q0011",d:11,n:"Metapod",o:"#0011 Metapod/011 - Metapod.obj",s:"011 - Metapod - Shiny.png"},
+{id:"q0012",d:12,n:"Butterfree",o:"#0012 Butterfree/012 - Butterfree.obj",s:"012 - Butterfree - Shiny.png"},
+{id:"q0013",d:13,n:"Weedle",o:"#0013 Weedle/013 - Weedle.obj",s:"013 - Weedle - Shiny.png"},
+{id:"q0014",d:14,n:"Kakuna",o:"#0014 Kakuna/014 - Kakuna.obj",s:"014 - Kakuna - Shiny.png"},
+{id:"q0015",d:15,n:"Beedrill",o:"#0015 Beedrill/015 - Beedrill.obj",s:"015 - Beedrill - Shiny.png"},
+{id:"q0016",d:16,n:"Pidgey",o:"#0016 Pidgey/016 - Pidgey.obj",s:"016 - Pidgey - Shiny.png"},
+{id:"q0017",d:17,n:"Pidgeotto",o:"#0017 Pidgeotto/017 - Pidgeotto.obj",s:"017 - Pidgeotto - Shiny.png"},
+{id:"q0018",d:18,n:"Pidgeot",o:"#0018 Pidgeot/018 - Pidgeot.obj",s:"018 - Pidgeot - Shiny.png"},
+{id:"q0019",d:19,n:"Rattata",o:"#0019 Rattata/019 - Rattata.obj",s:"019 - Rattata - Shiny.png"},
+{id:"q0020",d:20,n:"Raticate",o:"#0020 Raticate/020 - Raticate.obj",s:"020 - Raticate - Shiny.png"},
+{id:"q0021",d:21,n:"Spearow",o:"#0021 Spearow/021 - Spearow.obj",s:"021 - Spearow - Shiny.png"},
+{id:"q0022",d:22,n:"Fearow",o:"#0022 Fearow/022 - Fearow.obj",s:"022 - Fearow - Shiny.png"},
+{id:"q0023",d:23,n:"Ekans",o:"#0023 Ekans/023 - Ekans.obj",s:"023 - Ekans - Shiny.png"},
+{id:"q0024",d:24,n:"Arbok",o:"#0024 Arbok/024 - Arbok.obj",s:"024 - Arbok - Shiny.png"},
+{id:"q0025",d:25,n:"Pikachu",o:"#0025 Pikachu/025 - Pikachu.obj",s:"025 - Pikachu - Shiny.png"},
+{id:"q0025_ashcap",d:25,n:"Pikachu (Ash Cap)",o:"#0025 Pikachu (Ash Cap)/pq0025ac.obj"},
+{id:"q0025_explorer",d:25,n:"Pikachu (Explorer)",o:"#0025 Pikachu (Explorer)/pq0025exp.obj"},
+{id:"q0026",d:26,n:"Raichu",o:"#0026 Raichu/026 - Raichu.obj",s:"026 - Raichu - Shiny.png"},
+{id:"q0027",d:27,n:"Sandshrew",o:"#0027 Sandshrew/027 - Sandshrew.obj",s:"027 - Sandshrew - Shiny.png"},
+{id:"q0028",d:28,n:"Sandslash",o:"#0028 Sandslash/028 - Sandslash.obj",s:"028 - Sandslash - Shiny.png"},
+{id:"q0029",d:29,n:"Nidoran♀",o:"#0029 Nidoran♀/029 - Nidoran♀.obj",s:"029 - Nidoran♀ - Shiny.png"},
+{id:"q0030",d:30,n:"Nidorina",o:"#0030 Nidorina/030 - Nidorina.obj",s:"030 - Nidorina - Shiny.png"},
+{id:"q0031",d:31,n:"Nidoqueen",o:"#0031 Nidoqueen/031 - Nidoqueen.obj",s:"031 - Nidoqueen - Shiny.png"},
+{id:"q0031_bride",d:31,n:"Nidoqueen (Bride)",o:"#0031 Nidoqueen (Bride)/pq0031bride.obj",s:"pq0031brideS.png"},
+{id:"q0032",d:32,n:"Nidoran♂",o:"#0032 Nidoran♂/032 - Nidoran♂.obj",s:"032 - Nidoran♂ - Shiny.png"},
+{id:"q0033",d:33,n:"Nidorino",o:"#0033 Nidorino/033 - Nidorino.obj",s:"033 - Nidorino - Shiny.png"},
+{id:"q0034",d:34,n:"Nidoking",o:"#0034 Nidoking/034 - Nidoking.obj",s:"034 - Nidoking - Shiny.png"},
+{id:"q0034_groom",d:34,n:"Nidoking (Groom)",o:"#0034 Nidoking (Groom)/pq0034groom.obj",s:"pq0034groomS.png"},
+{id:"q0035",d:35,n:"Clefairy",o:"#0035 Clefairy/035 - Clefairy.obj",s:"035 - Clefairy - Shiny.png"},
+{id:"q0036",d:36,n:"Clefable",o:"#0036 Clefable/036 - Clefable.obj",s:"036 - Clefable - Shiny.png"},
+{id:"q0037",d:37,n:"Vulpix",o:"#0037 Vulpix/037 - Vulpix.obj",s:"037 - Vulpix - Shiny.png"},
+{id:"q0037_alolanform",d:37,n:"Vulpix (Alolan Form)",o:"#0037 Vulpix (Alolan Form)/pq0037a.obj",s:"pq0037aS.png"},
+{id:"q0038",d:38,n:"Ninetales",o:"#0038 Ninetales/038 - Ninetales.obj",s:"038 - Ninetales - Shiny.png"},
+{id:"q0038_alolanform",d:38,n:"Ninetales (Alolan Form)",o:"#0038 Ninetales (Alolan Form)/pq0038a.obj",s:"pq0038aS.png"},
+{id:"q0038_suit",d:38,n:"Ninetales (Suit)",o:"#0038 Ninetales (Suit)/pq0038suit.obj",s:"pq0038suitS.png"},
+{id:"q0039",d:39,n:"Jigglypuff",o:"#0039 Jigglypuff/039 - Jigglypuff.obj",s:"039 - Jigglypuff - Shiny.png"},
+{id:"q0040",d:40,n:"Wigglytuff",o:"#0040 Wigglytuff/040 - Wigglytuff.obj",s:"040 - Wigglytuff - Shiny.png"},
+{id:"q0041",d:41,n:"Zubat",o:"#0041 Zubat/041 - Zubat.obj",s:"041 - Zubat - Shiny.png"},
+{id:"q0042",d:42,n:"Golbat",o:"#0042 Golbat/042 - Golbat.obj",s:"042 - Golbat - Shiny.png"},
+{id:"q0043",d:43,n:"Oddish",o:"#0043 Oddish/043 - Oddish.obj",s:"043 - Oddish - Shiny.png"},
+{id:"q0044",d:44,n:"Gloom",o:"#0044 Gloom/044 - Gloom.obj",s:"044 - Gloom - Shiny.png"},
+{id:"q0045",d:45,n:"Vileplume",o:"#0045 Vileplume/045 - Vileplume.obj",s:"045 - Vileplume - Shiny.png"},
+{id:"q0046",d:46,n:"Paras",o:"#0046 Paras/046 - Paras.obj",s:"046 - Paras - Shiny.png"},
+{id:"q0047",d:47,n:"Parasect",o:"#0047 Parasect/047 - Parasect.obj",s:"047 - Parasect - Shiny.png"},
+{id:"q0048",d:48,n:"Venonat",o:"#0048 Venonat/048 - Venonat.obj",s:"048 - Venonat - Shiny.png"},
+{id:"q0049",d:49,n:"Venomoth",o:"#0049 Venomoth/049 - Venomoth.obj",s:"049 - Venomoth - Shiny.png"},
+{id:"q0050",d:50,n:"Diglett",o:"#0050 Diglett/050 - Diglett.obj",s:"050 - Diglett - Shiny.png"},
+{id:"q0051",d:51,n:"Dugtrio",o:"#0051 Dugtrio/051 - Dugtrio.obj",s:"051 - Dugtrio - Shiny.png"},
+{id:"q0052",d:52,n:"Meowth",o:"#0052 Meowth/052 - Meowth.obj",s:"052 - Meowth - Shiny.png"},
+{id:"q0053",d:53,n:"Persian",o:"#0053 Persian/053 - Persian.obj",s:"053 - Persian - Shiny.png"},
+{id:"q0054",d:54,n:"Psyduck",o:"#0054 Psyduck/054 - Psyduck.obj",s:"054 - Psyduck - Shiny.png"},
+{id:"q0055",d:55,n:"Golduck",o:"#0055 Golduck/055 - Golduck.obj",s:"055 - Golduck - Shiny.png"},
+{id:"q0056",d:56,n:"Mankey",o:"#0056 Mankey/056 - Mankey.obj",s:"056 - Mankey - Shiny.png"},
+{id:"q0057",d:57,n:"Primeape",o:"#0057 Primeape/057 - Primeape.obj",s:"057 - Primeape - Shiny.png"},
+{id:"q0058",d:58,n:"Growlithe",o:"#0058 Growlithe/058 - Growlithe.obj",s:"058 - Growlithe - Shiny.png"},
+{id:"q0059",d:59,n:"Arcanine",o:"#0059 Arcanine/059 - Arcanine.obj",s:"059 - Arcanine - Shiny.png"},
+{id:"q0059_postman",d:59,n:"Arcanine (Postman)",o:"#0059 Arcanine (Postman)/pq0059pm.obj",s:"pq0059pmS.png"},
+{id:"q0060",d:60,n:"Poliwag",o:"#0060 Poliwag/060 - Poliwag.obj",s:"060 - Poliwag - Shiny.png"},
+{id:"q0061",d:61,n:"Poliwhirl",o:"#0061 Poliwhirl/061 - Poliwhirl.obj",s:"061 - Poliwhirl - Shiny.png"},
+{id:"q0062",d:62,n:"Poliwrath",o:"#0062 Poliwrath/062 - Poliwrath.obj",s:"062 - Poliwrath - Shiny.png"},
+{id:"q0063",d:63,n:"Abra",o:"#0063 Abra/063 - Abra.obj",s:"063 - Abra - Shiny.png"},
+{id:"q0064",d:64,n:"Kadabra",o:"#0064 Kadabra/064 - Kadabra.obj",s:"064 - Kadabra - Shiny.png"},
+{id:"q0065",d:65,n:"Alakazam",o:"#0065 Alakazam/065 - Alakazam.obj",s:"065 - Alakazam - Shiny.png"},
+{id:"q0066",d:66,n:"Machop",o:"#0066 Machop/066 - Machop.obj",s:"066 - Machop - Shiny.png"},
+{id:"q0067",d:67,n:"Machoke",o:"#0067 Machoke/067 - Machoke.obj",s:"067 - Machoke - Shiny.png"},
+{id:"q0068",d:68,n:"Machamp",o:"#0068 Machamp/068 - Machamp.obj",s:"068 - Machamp - Shiny.png"},
+{id:"q0069",d:69,n:"Bellsprout",o:"#0069 Bellsprout/069 - Bellsprout.obj",s:"069 - Bellsprout - Shiny.png"},
+{id:"q0070",d:70,n:"Weepinbell",o:"#0070 Weepinbell/070 - Weepinbell.obj",s:"070 - Weepinbell - Shiny.png"},
+{id:"q0071",d:71,n:"Victreebel",o:"#0071 Victreebel/071 - Victreebel.obj",s:"071 - Victreebel - Shiny.png"},
+{id:"q0072",d:72,n:"Tentacool",o:"#0072 Tentacool/072 - Tentacool.obj",s:"072 - Tentacool - Shiny.png"},
+{id:"q0073",d:73,n:"Tentacruel",o:"#0073 Tentacruel/073 - Tentacruel.obj",s:"073 - Tentacruel - Shiny.png"},
+{id:"q0074",d:74,n:"Geodude",o:"#0074 Geodude/074 - Geodude.obj",s:"074 - Geodude - Shiny.png"},
+{id:"q0075",d:75,n:"Graveler",o:"#0075 Graveler/075 - Graveler.obj",s:"075 - Graveler - Shiny.png"},
+{id:"q0076",d:76,n:"Golem",o:"#0076 Golem/076 - Golem.obj",s:"076 - Golem - Shiny.png"},
+{id:"q0077",d:77,n:"Ponyta",o:"#0077 Ponyta/077 - Ponyta.obj",s:"077 - Ponyta - Shiny.png"},
+{id:"q0078",d:78,n:"Rapidash",o:"#0078 Rapidash/078 - Rapidash.obj",s:"078 - Rapidash - Shiny.png"},
+{id:"q0079",d:79,n:"Slowpoke",o:"#0079 Slowpoke/079 - Slowpoke.obj",s:"079 - Slowpoke - Shiny.png"},
+{id:"q0080",d:80,n:"Slowbro",o:"#0080 Slowbro/080 - Slowbro.obj",s:"080 - Slowbro - Shiny.png"},
+{id:"q0081",d:81,n:"Magnemite",o:"#0081 Magnemite/081 - Magnemite.obj",s:"081 - Magnemite - Shiny.png"},
+{id:"q0082",d:82,n:"Magneton",o:"#0082 Magneton/082 - Magneton.obj",s:"082 - Magneton - Shiny.png"},
+{id:"q0083",d:83,n:"Farfetch'd",o:"#0083 Farfetch'd/083 - Farfetch'd.obj",s:"083 - Farfetch'd - Shiny.png"},
+{id:"q0084",d:84,n:"Doduo",o:"#0084 Doduo/084 - Doduo.obj",s:"084 - Doduo - Shiny.png"},
+{id:"q0085",d:85,n:"Dodrio",o:"#0085 Dodrio/085 - Dodrio.obj",s:"085 - Dodrio - Shiny.png"},
+{id:"q0086",d:86,n:"Seel",o:"#0086 Seel/086 - Seel.obj",s:"086 - Seel - Shiny.png"},
+{id:"q0087",d:87,n:"Dewgong",o:"#0087 Dewgong/087 - Dewgong.obj",s:"087 - Dewgong - Shiny.png"},
+{id:"q0088",d:88,n:"Grimer",o:"#0088 Grimer/088 - Grimer.obj",s:"088 - Grimer - Shiny.png"},
+{id:"q0089",d:89,n:"Muk",o:"#0089 Muk/089 - Muk.obj",s:"089 - Muk - Shiny.png"},
+{id:"q0090",d:90,n:"Shellder",o:"#0090 Shellder/090 - Shellder.obj",s:"090 - Shellder - Shiny.png"},
+{id:"q0091",d:91,n:"Cloyster",o:"#0091 Cloyster/091 - Cloyster.obj",s:"091 - Cloyster - Shiny.png"},
+{id:"q0092",d:92,n:"Gastly",o:"#0092 Gastly/092 - Gastly.obj",s:"092 - Gastly - Shiny.png"},
+{id:"q0093",d:93,n:"Haunter",o:"#0093 Haunter/093 - Haunter.obj",s:"093 - Haunter - Shiny.png"},
+{id:"q0094",d:94,n:"Gengar",o:"#0094 Gengar/094 - Gengar.obj",s:"094 - Gengar - Shiny.png"},
+{id:"q0094_halloween",d:94,n:"Gengar (Halloween)",o:"#0094 Gengar (Halloween)/pq0094halloween.obj",s:"pq0094halloweenS.png"},
+{id:"q0095",d:95,n:"Onix",o:"#0095 Onix/095 - Onix.obj",s:"095 - Onix - Shiny.png"},
+{id:"q0096",d:96,n:"Drowzee",o:"#0096 Drowzee/096 - Drowzee.obj",s:"096 - Drowzee - Shiny.png"},
+{id:"q0097",d:97,n:"Hypno",o:"#0097 Hypno/097 - Hypno.obj",s:"097 - Hypno - Shiny.png"},
+{id:"q0098",d:98,n:"Krabby",o:"#0098 Krabby/098 - Krabby.obj",s:"098 - Krabby - Shiny.png"},
+{id:"q0099",d:99,n:"Kingler",o:"#0099 Kingler/099 - Kingler.obj",s:"099 - Kingler - Shiny.png"},
+{id:"q0100",d:100,n:"Voltorb",o:"#0100 Voltorb/100 - Voltorb.obj",s:"100 - Voltorb - Shiny.png"},
+{id:"q0101",d:101,n:"Electrode",o:"#0101 Electrode/101 - Electrode.obj",s:"101 - Electrode - Shiny.png"},
+{id:"q0102",d:102,n:"Exeggcute",o:"#0102 Exeggcute/102 - Exeggcute.obj",s:"102 - Exeggcute - Shiny.png"},
+{id:"q0102_sunglasses",d:102,n:"Exeggcute (Sunglasses)",o:"#0102 Exeggcute (Sunglasses)/pq0102sg.obj",s:"pq0102sgS.png"},
+{id:"q0103",d:103,n:"Exeggutor",o:"#0103 Exeggutor/103 - Exeggutor.obj",s:"103 - Exeggutor - Shiny.png"},
+{id:"q0103_alolanform",d:103,n:"Exeggutor (Alolan Form)",o:"#0103 Exeggutor (Alolan Form)/pq0103a.obj",s:"pq0103aS.png"},
+{id:"q0103_sunglasses",d:103,n:"Exeggutor (Sunglasses)",o:"#0103 Exeggutor (Sunglasses)/pq0103sg.obj",s:"pq0103sgS.png"},
+{id:"q0104",d:104,n:"Cubone",o:"#0104 Cubone/104 - Cubone.obj",s:"104 - Cubone - Shiny.png"},
+{id:"q0105",d:105,n:"Marowak",o:"#0105 Marowak/105 - Marowak.obj",s:"105 - Marowak - Shiny.png"},
+{id:"q0106",d:106,n:"Hitmonlee",o:"#0106 Hitmonlee/106 - Hitmonlee.obj",s:"106 - Hitmonlee - Shiny.png"},
+{id:"q0107",d:107,n:"Hitmonchan",o:"#0107 Hitmonchan/107 - Hitmonchan.obj",s:"107 - Hitmonchan - Shiny.png"},
+{id:"q0108",d:108,n:"Lickitung",o:"#0108 Lickitung/108 - Lickitung.obj",s:"108 - Lickitung - Shiny.png"},
+{id:"q0109",d:109,n:"Koffing",o:"#0109 Koffing/109 - Koffing.obj",s:"109 - Koffing - Shiny.png"},
+{id:"q0110",d:110,n:"Weezing",o:"#0110 Weezing/110 - Weezing.obj",s:"110 - Weezing - Shiny.png"},
+{id:"q0111",d:111,n:"Rhyhorn",o:"#0111 Rhyhorn/111 - Rhyhorn.obj",s:"111 - Rhyhorn - Shiny.png"},
+{id:"q0112",d:112,n:"Rhydon",o:"#0112 Rhydon/112 - Rhydon.obj",s:"112 - Rhydon - Shiny.png"},
+{id:"q0113",d:113,n:"Chansey",o:"#0113 Chansey/113 - Chansey.obj",s:"113 - Chansey - Shiny.png"},
+{id:"q0114",d:114,n:"Tangela",o:"#0114 Tangela/114 - Tangela.obj",s:"114 - Tangela - Shiny.png"},
+{id:"q0114_garland",d:114,n:"Tangela (Garland)",o:"#0114 Tangela (Garland)/pq0114garland.obj",s:"pq0114garlandS.png"},
+{id:"q0115",d:115,n:"Kangaskhan",o:"#0115 Kangaskhan/115 - Kangaskhan.obj",s:"115 - Kangaskhan - Shiny.png"},
+{id:"q0116",d:116,n:"Horsea",o:"#0116 Horsea/116 - Horsea.obj",s:"116 - Horsea - Shiny.png"},
+{id:"q0117",d:117,n:"Seadra",o:"#0117 Seadra/117 - Seadra.obj",s:"117 - Seadra - Shiny.png"},
+{id:"q0118",d:118,n:"Goldeen",o:"#0118 Goldeen/118 - Goldeen.obj",s:"118 - Goldeen - Shiny.png"},
+{id:"q0119",d:119,n:"Seaking",o:"#0119 Seaking/119 - Seaking.obj",s:"119 - Seaking - Shiny.png"},
+{id:"q0120",d:120,n:"Staryu",o:"#0120 Staryu/120 - Staryu.obj",s:"120 - Staryu - Shiny.png"},
+{id:"q0121",d:121,n:"Starmie",o:"#0121 Starmie/121 - Starmie.obj",s:"121 - Starmie - Shiny.png"},
+{id:"q0122",d:122,n:"Mr. Mime",o:"#0122 Mr. Mime/122 - Mr. Mime.obj",s:"122 - Mr. Mime - Shiny.png"},
+{id:"q0123",d:123,n:"Scyther",o:"#0123 Scyther/123 - Scyther.obj",s:"123 - Scyther - Shiny.png"},
+{id:"q0124",d:124,n:"Jynx",o:"#0124 Jynx/124 - Jynx.obj",s:"124 - Jynx - Shiny.png"},
+{id:"q0125",d:125,n:"Electabuzz",o:"#0125 Electabuzz/125 - Electabuzz.obj",s:"125 - Electabuzz - Shiny.png"},
+{id:"q0126",d:126,n:"Magmar",o:"#0126 Magmar/126 - Magmar.obj",s:"126 - Magmar - Shiny.png"},
+{id:"q0126_hiphop",d:126,n:"Magmar (HipHop)",o:"#0126 Magmar (HipHop)/pq0126hh.obj",s:"pq0126hhS.png"},
+{id:"q0127",d:127,n:"Pinsir",o:"#0127 Pinsir/127 - Pinsir.obj",s:"127 - Pinsir - Shiny.png"},
+{id:"q0128",d:128,n:"Tauros",o:"#0128 Tauros/128 - Tauros.obj",s:"128 - Tauros - Shiny.png"},
+{id:"q0129",d:129,n:"Magikarp",o:"#0129 Magikarp/129 - Magikarp.obj",s:"129 - Magikarp - Shiny.png"},
+{id:"q0130",d:130,n:"Gyarados",o:"#0130 Gyarados/130 - Gyarados.obj",s:"130 - Gyarados - Shiny.png"},
+{id:"q0131",d:131,n:"Lapras",o:"#0131 Lapras/131 - Lapras.obj",s:"131 - Lapras - Shiny.png"},
+{id:"q0132",d:132,n:"Ditto",o:"#0132 Ditto/132 - Ditto.obj",s:"132 - Ditto - Shiny.png"},
+{id:"q0132_baseballcap",d:132,n:"Ditto (Baseball Cap)",o:"#0132 Ditto (Baseball Cap)/pq0132bc.obj",s:"pq0132bcS.png"},
+{id:"q0132_gentleman",d:132,n:"Ditto (Gentleman)",o:"#0132 Ditto (Gentleman)/pq0132gentleman.obj",s:"pq0132gentlemanS.png"},
+{id:"q0133",d:133,n:"Eevee",o:"#0133 Eevee/133 - Eevee.obj",s:"133 - Eevee - Shiny.png"},
+{id:"q0133_christmashat",d:133,n:"Eevee (Christmas Hat)",o:"#0133 Eevee (Christmas Hat)/pq0133ch.obj",s:"pq0133chS.png"},
+{id:"q0133_sakura",d:133,n:"Eevee (Sakura)",o:"#0133 Eevee (Sakura)/pq0133sakura.obj",s:"pq0133sakuraS.png"},
+{id:"q0134",d:134,n:"Vaporeon",o:"#0134 Vaporeon/134 - Vaporeon.obj",s:"134 - Vaporeon - Shiny.png"},
+{id:"q0135",d:135,n:"Jolteon",o:"#0135 Jolteon/135 - Jolteon.obj",s:"135 - Jolteon - Shiny.png"},
+{id:"q0136",d:136,n:"Flareon",o:"#0136 Flareon/136 - Flareon.obj",s:"136 - Flareon - Shiny.png"},
+{id:"q0137",d:137,n:"Porygon",o:"#0137 Porygon/137 - Porygon.obj",s:"137 - Porygon - Shiny.png"},
+{id:"q0138",d:138,n:"Omanyte",o:"#0138 Omanyte/138 - Omanyte.obj",s:"138 - Omanyte - Shiny.png"},
+{id:"q0139",d:139,n:"Omastar",o:"#0139 Omastar/139 - Omastar.obj",s:"139 - Omastar - Shiny.png"},
+{id:"q0139_thickglasses",d:139,n:"Omastar (Thick Glasses)",o:"#0139 Omastar (Thick Glasses)/pq0139tg.obj",s:"pq0139tgS.png"},
+{id:"q0140",d:140,n:"Kabuto",o:"#0140 Kabuto/140 - Kabuto.obj",s:"140 - Kabuto - Shiny.png"},
+{id:"q0141",d:141,n:"Kabutops",o:"#0141 Kabutops/141 - Kabutops.obj",s:"141 - Kabutops - Shiny.png"},
+{id:"q0142",d:142,n:"Aerodactyl",o:"#0142 Aerodactyl/142 - Aerodactyl.obj",s:"142 - Aerodactyl - Shiny.png"},
+{id:"q0143",d:143,n:"Snorlax",o:"#0143 Snorlax/143 - Snorlax.obj",s:"143 - Snorlax - Shiny.png"},
+{id:"q0144",d:144,n:"Articuno",o:"#0144 Articuno/144 - Articuno.obj",s:"144 - Articuno - Shiny.png"},
+{id:"q0144_galarianform",d:144,n:"Articuno (Galarian Form)",o:"#0144 Articuno (Galarian Form)/pq0144g.obj",s:"pq0144gS.png"},
+{id:"q0145",d:145,n:"Zapdos",o:"#0145 Zapdos/145 - Zapdos.obj",s:"145 - Zapdos - Shiny.png"},
+{id:"q0145_galarianform",d:145,n:"Zapdos (Galarian Form)",o:"#0145 Zapdos (Galarian Form)/pq0145g.obj",s:"pq0145gS.png"},
+{id:"q0146",d:146,n:"Moltres",o:"#0146 Moltres/146 - Moltres.obj",s:"146 - Moltres - Shiny.png"},
+{id:"q0146_galarianform",d:146,n:"Moltres (Galarian Form)",o:"#0146 Moltres (Galarian Form)/pq0146g.obj",s:"pq0146gS.png"},
+{id:"q0147",d:147,n:"Dratini",o:"#0147 Dratini/147 - Dratini.obj",s:"147 - Dratini - Shiny.png"},
+{id:"q0148",d:148,n:"Dragonair",o:"#0148 Dragonair/148 - Dragonair.obj",s:"148 - Dragonair - Shiny.png"},
+{id:"q0149",d:149,n:"Dragonite",o:"#0149 Dragonite/149 - Dragonite.obj",s:"149 - Dragonite - Shiny.png"},
+{id:"q0150",d:150,n:"Mewtwo",o:"#0150 Mewtwo/150 - Mewtwo.obj",s:"150 - Mewtwo - Shiny.png"},
+{id:"q0150_armored",d:150,n:"Mewtwo (Armored)",o:"#0150 Mewtwo (Armored)/pq0150a.obj"},
+{id:"q0151",d:151,n:"Mew",o:"#0151 Mew/151 - Mew.obj",s:"151 - Mew - Shiny.png"},
+{id:"q0152",d:152,n:"Chikorita",o:"#0152 Chikorita/pq0152.obj",s:"pq0152S.png"},
+{id:"q0153",d:153,n:"Bayleef",o:"#0153 Bayleef/pq0153.obj",s:"pq0153S.png"},
+{id:"q0154",d:154,n:"Meganium",o:"#0154 Meganium/pq0154.obj",s:"pq0154S.png"},
+{id:"q0155",d:155,n:"Cyndaquil",o:"#0155 Cyndaquil/pq0155.obj",s:"pq0155S.png"},
+{id:"q0156",d:156,n:"Quilava",o:"#0156 Quilava/pq0156.obj",s:"pq0156S.png"},
+{id:"q0157",d:157,n:"Typhlosion",o:"#0157 Typhlosion/pq0157.obj",s:"pq0157S.png"},
+{id:"q0158",d:158,n:"Totodile",o:"#0158 Totodile/pq0158.obj",s:"pq0158S.png"},
+{id:"q0159",d:159,n:"Croconaw",o:"#0159 Croconaw/pq0159.obj",s:"pq0159S.png"},
+{id:"q0160",d:160,n:"Feraligatr",o:"#0160 Feraligatr/pq0160.obj",s:"pq0160S.png"},
+{id:"q0170",d:170,n:"Chinchou",o:"#0170 Chinchou/pq0170.obj",s:"pq0170S.png"},
+{id:"q0171",d:171,n:"Lanturn",o:"#0171 Lanturn/pq0171.obj",s:"pq0171S.png"},
+{id:"q0175",d:175,n:"Togepi",o:"#0175 Togepi/pq0175.obj",s:"pq0175S.png"},
+{id:"q0176",d:176,n:"Togetic",o:"#0176 Togetic/pq0176.obj",s:"pq0176S.png"},
+{id:"q0177",d:177,n:"Natu",o:"#0177 Natu/pq0177.obj",s:"pq0177S.png"},
+{id:"q0178",d:178,n:"Xatu",o:"#0178 Xatu/pq0178.obj",s:"pq0178S.png"},
+{id:"q0183",d:183,n:"Marill",o:"#0183 Marill/pq0183.obj",s:"pq0183S.png"},
+{id:"q0184",d:184,n:"Azumarill",o:"#0184 Azumarill/pq0184.obj",s:"pq0184S.png"},
+{id:"q0194",d:194,n:"Wooper",o:"#0194 Wooper/pq0194.obj",s:"pq0194S.png"},
+{id:"q0194_paldeanform",d:194,n:"Wooper (Paldean Form)",o:"#0194 Wooper (Paldean Form)/pq0194p.obj",s:"pq0194pS.png"},
+{id:"q0195",d:195,n:"Quagsire",o:"#0195 Quagsire/pq0195.obj",s:"pq0195S.png"},
+{id:"q0196",d:196,n:"Espeon",o:"#0196 Espeon/pq0196.obj",s:"pq0196S.png"},
+{id:"q0197",d:197,n:"Umbreon",o:"#0197 Umbreon/pq0197.obj",s:"pq0197S.png"},
+{id:"q0200",d:200,n:"Misdreavus",o:"#0200 Misdreavus/pq0200.obj",s:"pq0200S.png"},
+{id:"q0202",d:202,n:"Wobbuffet",o:"#0202 Wobbuffet/pq0202.obj",s:"pq0202S.png"},
+{id:"q0207",d:207,n:"Gligar",o:"#0207 Gligar/pq0207.obj",s:"pq0207S.png"},
+{id:"q0212",d:212,n:"Scizor",o:"#0212 Scizor/pq0212.obj",s:"pq0212S.png"},
+{id:"q0214",d:214,n:"Heracross",o:"#0214 Heracross/pq0214.obj",s:"pq0214S.png"},
+{id:"q0215",d:215,n:"Sneasel",o:"#0215 Sneasel/pq0215.obj",s:"pq0215S.png"},
+{id:"q0222",d:222,n:"Corsola",o:"#0222 Corsola/pq0222.obj",s:"pq0222S.png"},
+{id:"q0223",d:223,n:"Remoraid",o:"#0223 Remoraid/pq0223.obj",s:"pq0223S.png"},
+{id:"q0224",d:224,n:"Octillery",o:"#0224 Octillery/pq0224.obj",s:"pq0224S.png"},
+{id:"q0225",d:225,n:"Delibird",o:"#0225 Delibird/pq0225.obj",s:"pq0225S.png"},
+{id:"q0227",d:227,n:"Skarmory",o:"#0227 Skarmory/pq0227.obj",s:"pq0227S.png"},
+{id:"q0228",d:228,n:"Houndour",o:"#0228 Houndour/pq0228.obj",s:"pq0228S.png"},
+{id:"q0229",d:229,n:"Houndoom",o:"#0229 Houndoom/pq0229.obj",s:"pq0229S.png"},
+{id:"q0231",d:231,n:"Phanpy",o:"#0231 Phanpy/pq0231.obj",s:"pq0231S.png"},
+{id:"q0232",d:232,n:"Donphan",o:"#0232 Donphan/pq0232.obj",s:"pq0232S.png"},
+{id:"q0242",d:242,n:"Blissey",o:"#0242 Blissey/pq0242.obj",s:"pq0242S.png"},
+{id:"q0243",d:243,n:"Raikou",o:"#0243 Raikou/pq0243.obj",s:"pq0243S.png"},
+{id:"q0244",d:244,n:"Entei",o:"#0244 Entei/pq0244.obj",s:"pq0244S.png"},
+{id:"q0245",d:245,n:"Suicune",o:"#0245 Suicune/pq0245.obj",s:"pq0245S.png"},
+{id:"q0246",d:246,n:"Larvitar",o:"#0246 Larvitar/pq0246.obj",s:"pq0246S.png"},
+{id:"q0247",d:247,n:"Pupitar",o:"#0247 Pupitar/pq0247.obj",s:"pq0247S.png"},
+{id:"q0248",d:248,n:"Tyranitar",o:"#0248 Tyranitar/pq0248.obj",s:"pq0248S.png"},
+{id:"q0249",d:249,n:"Lugia",o:"#0249 Lugia/pq0249.obj",s:"pq0249S.png"},
+{id:"q0250",d:250,n:"Ho-Oh",o:"#0250 Ho-Oh/pq0250.obj",s:"pq0250S.png"},
+{id:"q0251",d:251,n:"Celebi",o:"#0251 Celebi/pq0251.obj",s:"pq0251S.png"},
+{id:"q0252",d:252,n:"Treecko",o:"#0252 Treecko/pq0252.obj",s:"pq0252S.png"},
+{id:"q0253",d:253,n:"Grovyle",o:"#0253 Grovyle/pq0253.obj",s:"pq0253S.png"},
+{id:"q0254",d:254,n:"Sceptile",o:"#0254 Sceptile/pq0254.obj",s:"pq0254S.png"},
+{id:"q0255",d:255,n:"Torchic",o:"#0255 Torchic/pq0255.obj",s:"pq0255S.png"},
+{id:"q0256",d:256,n:"Combusken",o:"#0256 Combusken/pq0256.obj",s:"pq0256S.png"},
+{id:"q0257",d:257,n:"Blaziken",o:"#0257 Blaziken/pq0257.obj",s:"pq0257S.png"},
+{id:"q0258",d:258,n:"Mudkip",o:"#0258 Mudkip/pq0258.obj",s:"pq0258S.png"},
+{id:"q0259",d:259,n:"Marshtomp",o:"#0259 Marshtomp/pq0259.obj",s:"pq0259S.png"},
+{id:"q0260",d:260,n:"Swampert",o:"#0260 Swampert/pq0260.obj",s:"pq0260S.png"},
+{id:"q0270",d:270,n:"Lotad",o:"#0270 Lotad/pq0270.obj",s:"pq0270S.png"},
+{id:"q0271",d:271,n:"Lombre",o:"#0271 Lombre/pq0271.obj",s:"pq0271S.png"},
+{id:"q0272",d:272,n:"Ludicolo",o:"#0272 Ludicolo/pq0272.obj",s:"pq0272S.png"},
+{id:"q0276",d:276,n:"Taillow",o:"#0276 Taillow/pq0276.obj",s:"pq0276S.png"},
+{id:"q0277",d:277,n:"Swellow",o:"#0277 Swellow/pq0277.obj",s:"pq0277S.png"},
+{id:"q0278",d:278,n:"Wingull",o:"#0278 Wingull/pq0278.obj",s:"pq0278S.png"},
+{id:"q0279",d:279,n:"Pelipper",o:"#0279 Pelipper/pq0279.obj",s:"pq0279S.png"},
+{id:"q0280",d:280,n:"Ralts",o:"#0280 Ralts/pq0280.obj",s:"pq0280S.png"},
+{id:"q0281",d:281,n:"Kirlia",o:"#0281 Kirlia/pq0281.obj",s:"pq0281S.png"},
+{id:"q0282",d:282,n:"Gardevoir",o:"#0282 Gardevoir/pq0282.obj",s:"pq0282S.png"},
+{id:"q0302",d:302,n:"Sableye",o:"#0302 Sableye/pq0302.obj",s:"pq0302S.png"},
+{id:"q0303",d:303,n:"Mawile",o:"#0303 Mawile/pq0303.obj",s:"pq0303S.png"},
+{id:"q0311",d:311,n:"Plusle",o:"#0311 Plusle/pq0311.obj",s:"pq0311S.png"},
+{id:"q0312",d:312,n:"Minun",o:"#0312 Minun/pq0312.obj",s:"pq0312S.png"},
+{id:"q0318",d:318,n:"Carvanha",o:"#0318 Carvanha/pq0318.obj",s:"pq0318S.png"},
+{id:"q0319",d:319,n:"Sharpedo",o:"#0319 Sharpedo/pq0319.obj",s:"pq0319S.png"},
+{id:"q0320",d:320,n:"Wailmer",o:"#0320 Wailmer/pq0320.obj",s:"pq0320S.png"},
+{id:"q0321",d:321,n:"Wailord",o:"#0321 Wailord/pq0321.obj",s:"pq0321S.png"},
+{id:"q0322",d:322,n:"Numel",o:"#0322 Numel/pq0322.obj",s:"pq0322S.png"},
+{id:"q0323",d:323,n:"Camerupt",o:"#0323 Camerupt/pq0323.obj",s:"pq0323S.png"},
+{id:"q0324",d:324,n:"Torkoal",o:"#0324 Torkoal/pq0324.obj",s:"pq0324S.png"},
+{id:"q0328",d:328,n:"Trapinch",o:"#0328 Trapinch/pq0328.obj",s:"pq0328S.png"},
+{id:"q0329",d:329,n:"Vibrava",o:"#0329 Vibrava/pq0329.obj",s:"pq0329S.png"},
+{id:"q0330",d:330,n:"Flygon",o:"#0330 Flygon/pq0330.obj",s:"pq0330S.png"},
+{id:"q0331",d:331,n:"Cacnea",o:"#0331 Cacnea/pq0331.obj",s:"pq0331S.png"},
+{id:"q0332",d:332,n:"Cacturne",o:"#0332 Cacturne/pq0332.obj",s:"pq0332S.png"},
+{id:"q0333",d:333,n:"Swablu",o:"#0333 Swablu/pq0333.obj",s:"pq0333S.png"},
+{id:"q0334",d:334,n:"Altaria",o:"#0334 Altaria/pq0334.obj",s:"pq0334S.png"},
+{id:"q0337",d:337,n:"Lunatone",o:"#0337 Lunatone/pq0337.obj",s:"pq0337S.png"},
+{id:"q0338",d:338,n:"Solrock",o:"#0338 Solrock/pq0338.obj",s:"pq0338S.png"},
+{id:"q0341",d:341,n:"Corphish",o:"#0341 Corphish/pq0341.obj",s:"pq0341S.png"},
+{id:"q0342",d:342,n:"Crawdaunt",o:"#0342 Crawdaunt/pq0342.obj",s:"pq0342S.png"},
+{id:"q0343",d:343,n:"Baltoy",o:"#0343 Baltoy/pq0343.obj",s:"pq0343S.png"},
+{id:"q0344",d:344,n:"Claydol",o:"#0344 Claydol/pq0344.obj",s:"pq0344S.png"},
+{id:"q0349",d:349,n:"Feebas",o:"#0349 Feebas/pq0349.obj",s:"pq0349S.png"},
+{id:"q0350",d:350,n:"Milotic",o:"#0350 Milotic/pq0350.obj",s:"pq0350S.png"},
+{id:"q0357",d:357,n:"Tropius",o:"#0357 Tropius/pq0357.obj",s:"pq0357S.png"},
+{id:"q0359",d:359,n:"Absol",o:"#0359 Absol/pq0359.obj",s:"pq0359S.png"},
+{id:"q0366",d:366,n:"Clamperl",o:"#0366 Clamperl/pq0366.obj",s:"pq0366S.png"},
+{id:"q0367",d:367,n:"Huntail",o:"#0367 Huntail/pq0367.obj",s:"pq0367S.png"},
+{id:"q0368",d:368,n:"Gorebyss",o:"#0368 Gorebyss/pq0368.obj",s:"pq0368S.png"},
+{id:"q0370",d:370,n:"Luvdisc",o:"#0370 Luvdisc/pq0370.obj",s:"pq0370S.png"},
+{id:"q0371",d:371,n:"Bagon",o:"#0371 Bagon/pq0371.obj",s:"pq0371S.png"},
+{id:"q0372",d:372,n:"Shelgon",o:"#0372 Shelgon/pq0372.obj",s:"pq0372S.png"},
+{id:"q0373",d:373,n:"Salamence",o:"#0373 Salamence/pq0373.obj",s:"pq0373S.png"},
+{id:"q0374",d:374,n:"Beldum",o:"#0374 Beldum/pq0374.obj",s:"pq0374S.png"},
+{id:"q0375",d:375,n:"Metang",o:"#0375 Metang/pq0375.obj",s:"pq0375S.png"},
+{id:"q0376",d:376,n:"Metagross",o:"#0376 Metagross/pq0376.obj",s:"pq0376S.png"},
+{id:"q0377",d:377,n:"Regirock",o:"#0377 Regirock/pq0377.obj",s:"pq0377S.png"},
+{id:"q0378",d:378,n:"Regice",o:"#0378 Regice/pq0378.obj",s:"pq0378S.png"},
+{id:"q0379",d:379,n:"Registeel",o:"#0379 Registeel/pq0379.obj",s:"pq0379S.png"},
+{id:"q0380",d:380,n:"Latias",o:"#0380 Latias/pq0380.obj",s:"pq0380S.png"},
+{id:"q0381",d:381,n:"Latios",o:"#0381 Latios/pq0381.obj",s:"pq0381S.png"},
+{id:"q0382",d:382,n:"Kyogre",o:"#0382 Kyogre/pq0382.obj",s:"pq0382S.png"},
+{id:"q0383",d:383,n:"Groudon",o:"#0383 Groudon/pq0383.obj",s:"pq0383S.png"},
+{id:"q0384",d:384,n:"Rayquaza",o:"#0384 Rayquaza/pq0384.obj",s:"pq0384S.png"},
+{id:"q0385",d:385,n:"Jirachi",o:"#0385 Jirachi/pq0385.obj",s:"pq0385S.png"},
+{id:"q0386_attackforme",d:386,n:"Deoxys (Attack Forme)",o:"#0386 Deoxys (Attack Forme)/pq0386a.obj",s:"pq0386aS.png"},
+{id:"q0386_defenseforme",d:386,n:"Deoxys (Defense Forme)",o:"#0386 Deoxys (Defense Forme)/pq0386d.obj",s:"pq0386dS.png"},
+{id:"q0386_normalforme",d:386,n:"Deoxys (Normal Forme)",o:"#0386 Deoxys (Normal Forme)/pq0386.obj",s:"pq0386S.png"},
+{id:"q0386_speedforme",d:386,n:"Deoxys (Speed Forme)",o:"#0386 Deoxys (Speed Forme)/pq0386s.obj",s:"pq0386sS.png"},
+{id:"q0387",d:387,n:"Turtwig",o:"#0387 Turtwig/pq0387.obj",s:"pq0387S.png"},
+{id:"q0388",d:388,n:"Grotle",o:"#0388 Grotle/pq0388.obj",s:"pq0388S.png"},
+{id:"q0389",d:389,n:"Torterra",o:"#0389 Torterra/pq0389.obj",s:"pq0389S.png"},
+{id:"q0390",d:390,n:"Chimchar",o:"#0390 Chimchar/pq0390.obj",s:"pq0390S.png"},
+{id:"q0391",d:391,n:"Monferno",o:"#0391 Monferno/pq0391.obj",s:"pq0391S.png"},
+{id:"q0392",d:392,n:"Infernape",o:"#0392 Infernape/pq0392.obj",s:"pq0392S.png"},
+{id:"q0393",d:393,n:"Piplup",o:"#0393 Piplup/pq0393.obj",s:"pq0393S.png"},
+{id:"q0394",d:394,n:"Prinplup",o:"#0394 Prinplup/pq0394.obj",s:"pq0394S.png"},
+{id:"q0395",d:395,n:"Empoleon",o:"#0395 Empoleon/pq0395.obj",s:"pq0395S.png"},
+{id:"q0399",d:399,n:"Bidoof",o:"#0399 Bidoof/pq0399.obj",s:"pq0399S.png"},
+{id:"q0400",d:400,n:"Bibarel",o:"#0400 Bibarel/pq0400.obj",s:"pq0400S.png"},
+{id:"q0425",d:425,n:"Drifloon",o:"#0425 Drifloon/pq0425.obj",s:"pq0425S.png"},
+{id:"q0426",d:426,n:"Drifblim",o:"#0426 Drifblim/pq0426.obj",s:"pq0426S.png"},
+{id:"q0429",d:429,n:"Mismagius",o:"#0429 Mismagius/pq0429.obj",s:"pq0429S.png"},
+{id:"q0442",d:442,n:"Spiritomb",o:"#0442 Spiritomb/pq0442.obj",s:"pq0442S.png"},
+{id:"q0443",d:443,n:"Gible",o:"#0443 Gible/pq0443.obj",s:"pq0443S.png"},
+{id:"q0444",d:444,n:"Gabite",o:"#0444 Gabite/pq0444.obj",s:"pq0444S.png"},
+{id:"q0445",d:445,n:"Garchomp",o:"#0445 Garchomp/pq0445.obj",s:"pq0445S.png"},
+{id:"q0448",d:448,n:"Lucario",o:"#0448 Lucario/pq0448.obj",s:"pq0448S.png"},
+{id:"q0461",d:461,n:"Weavile",o:"#0461 Weavile/pq0461.obj",s:"pq0461S.png"},
+{id:"q0465",d:465,n:"Tangrowth",o:"#0465 Tangrowth/pq0465.obj",s:"pq0465S.png"},
+{id:"q0468",d:468,n:"Togekiss",o:"#0468 Togekiss/pq0468.obj",s:"pq0468S.png"},
+{id:"q0470",d:470,n:"Leafeon",o:"#0470 Leafeon/pq0470.obj",s:"pq0470S.png"},
+{id:"q0471",d:471,n:"Glaceon",o:"#0471 Glaceon/pq0471.obj",s:"pq0471S.png"},
+{id:"q0472",d:472,n:"Gliscor",o:"#0472 Gliscor/pq0472.obj",s:"pq0472S.png"},
+{id:"q0479",d:479,n:"Rotom",o:"#0479 Rotom/pq0479.obj",s:"pq0479S.png"},
+{id:"q0479_fan",d:479,n:"Rotom (Fan)",o:"#0479 Rotom (Fan)/pq0479fan.obj",s:"pq0479fanS.png"},
+{id:"q0479_frost",d:479,n:"Rotom (Frost)",o:"#0479 Rotom (Frost)/pq0479frost.obj",s:"pq0479frostS.png"},
+{id:"q0479_heat",d:479,n:"Rotom (Heat)",o:"#0479 Rotom (Heat)/pq0479heat.obj",s:"pq0479heatS.png"},
+{id:"q0479_mow",d:479,n:"Rotom (Mow)",o:"#0479 Rotom (Mow)/pq0479mow.obj",s:"pq0479mowS.png"},
+{id:"q0479_wash",d:479,n:"Rotom (Wash)",o:"#0479 Rotom (Wash)/pq0479wash.obj",s:"pq0479washS.png"},
+{id:"q0480",d:480,n:"Uxie",o:"#0480 Uxie/pq0480.obj",s:"pq0480S.png"},
+{id:"q0481",d:481,n:"Mesprit",o:"#0481 Mesprit/pq0481.obj",s:"pq0481S.png"},
+{id:"q0482",d:482,n:"Azelf",o:"#0482 Azelf/pq0482.obj",s:"pq0482S.png"},
+{id:"q0483",d:483,n:"Dialga",o:"#0483 Dialga/pq0483.obj",s:"pq0483S.png"},
+{id:"q0484",d:484,n:"Palkia",o:"#0484 Palkia/pq0484.obj",s:"pq0484S.png"},
+{id:"q0486",d:486,n:"Regigigas",o:"#0486 Regigigas/pq0486.obj",s:"pq0486S.png"},
+{id:"q0487",d:487,n:"Giratina",o:"#0487 Giratina/pq0487a.obj",s:"pq0487aS.png"},
+{id:"q0488",d:488,n:"Cresselia",o:"#0488 Cresselia/pq0488.obj",s:"pq0488S.png"},
+{id:"q0489",d:489,n:"Phione",o:"#0489 Phione/pq0489.obj",s:"pq0489S.png"},
+{id:"q0490",d:490,n:"Manaphy",o:"#0490 Manaphy/pq0490.obj",s:"pq0490S.png"},
+{id:"q0491",d:491,n:"Darkrai",o:"#0491 Darkrai/pq0491.obj",s:"pq0491S.png"},
+{id:"q0492_landforme",d:492,n:"Shaymin (Land Forme)",o:"#0492 Shaymin (Land Forme)/pq0492l.obj",s:"pq0492lS.png"},
+{id:"q0492_skyforme",d:492,n:"Shaymin (Sky Forme)",o:"#0492 Shaymin (Sky Forme)/pq0492s.obj",s:"pq0492sS.png"},
+{id:"q0493",d:493,n:"Arceus",o:"#0493 Arceus/pq0493.obj",s:"pq0493S.png"},
+{id:"q0529",d:529,n:"Drilbur",o:"#0529 Drilbur/pq0529.obj",s:"pq0529S.png"},
+{id:"q0530",d:530,n:"Excadrill",o:"#0530 Excadrill/pq0530.obj",s:"pq0530S.png"},
+{id:"q0532",d:532,n:"Timburr",o:"#0532 Timburr/pq0532.obj",s:"pq0532S.png"},
+{id:"q0533",d:533,n:"Gurdurr",o:"#0533 Gurdurr/pq0533.obj",s:"pq0533S.png"},
+{id:"q0534",d:534,n:"Conkeldurr",o:"#0534 Conkeldurr/pq0534.obj",s:"pq0534S.png"},
+{id:"q0546",d:546,n:"Cottonee",o:"#0546 Cottonee/pq0546.obj",s:"pq0546S.png"},
+{id:"q0547",d:547,n:"Whimsicott",o:"#0547 Whimsicott/pq0547.obj",s:"pq0547S.png"},
+{id:"q0551",d:551,n:"Sandile",o:"#0551 Sandile/pq0551.obj",s:"pq0551S.png"},
+{id:"q0552",d:552,n:"Krokorok",o:"#0552 Krokorok/pq0552.obj",s:"pq0552S.png"},
+{id:"q0553",d:553,n:"Krookodile",o:"#0553 Krookodile/pq0553.obj",s:"pq0553S.png"},
+{id:"q0570",d:570,n:"Zorua",o:"#0570 Zorua/pq0570.obj",s:"pq0570S.png"},
+{id:"q0570_hisuianform",d:570,n:"Zorua (Hisuian Form)",o:"#0570 Zorua (Hisuian Form)/pq0570h.obj",s:"pq0570hS.png"},
+{id:"q0571",d:571,n:"Zoroark",o:"#0571 Zoroark/pq0571.obj",s:"pq0571S.png"},
+{id:"q0571_hisuianform",d:571,n:"Zoroark (Hisuian Form)",o:"#0571 Zoroark (Hisuian Form)/pq0571h.obj",s:"pq0571hS.png"},
+{id:"q0587",d:587,n:"Emolga",o:"#0587 Emolga/pq0587.obj",s:"pq0587S.png"},
+{id:"q0597",d:597,n:"Ferroseed",o:"#0597 Ferroseed/pq0597.obj",s:"pq0597S.png"},
+{id:"q0598",d:598,n:"Ferrothorn",o:"#0598 Ferrothorn/pq0598.obj",s:"pq0598S.png"},
+{id:"q0599",d:599,n:"Klink",o:"#0599 Klink/pq0599.obj",s:"pq0599S.png"},
+{id:"q0600",d:600,n:"Klang",o:"#0600 Klang/pq0600.obj",s:"pq0600S.png"},
+{id:"q0601",d:601,n:"Klinklang",o:"#0601 Klinklang/pq0601.obj",s:"pq0601S.png"},
+{id:"q0607",d:607,n:"Litwick",o:"#0607 Litwick/pq0607.obj",s:"pq0607S.png"},
+{id:"q0608",d:608,n:"Lampent",o:"#0608 Lampent/pq0608.obj",s:"pq0608S.png"},
+{id:"q0609",d:609,n:"Chandelure",o:"#0609 Chandelure/pq0609.obj",s:"pq0609S.png"},
+{id:"q0633",d:633,n:"Deino",o:"#0633 Deino/pq0633.obj",s:"pq0633S.png"},
+{id:"q0634",d:634,n:"Zweilous",o:"#0634 Zweilous/pq0634.obj",s:"pq0634S.png"},
+{id:"q0635",d:635,n:"Hydreigon",o:"#0635 Hydreigon/pq0635.obj",s:"pq0635S.png"},
+{id:"q0643",d:643,n:"Reshiram",o:"#0643 Reshiram/pq0643.obj",s:"pq0643S.png"},
+{id:"q0644",d:644,n:"Zekrom",o:"#0644 Zekrom/pq0644.obj",s:"pq0644s.png"},
+{id:"q0646",d:646,n:"Kyurem",o:"#0646 Kyurem/pq0646.obj",s:"pq0646S.png"},
+{id:"q0656",d:656,n:"Froakie",o:"#0656 Froakie/pq0656.obj",s:"pq0656S.png"},
+{id:"q0657",d:657,n:"Frogadier",o:"#0657 Frogadier/pq0657.obj",s:"pq0657S.png"},
+{id:"q0658",d:658,n:"Greninja",o:"#0658 Greninja/pq0658.obj",s:"pq0658S.png"},
+{id:"q0700",d:700,n:"Sylveon",o:"#0700 Sylveon/pq0700.obj",s:"pq0700S.png"},
+{id:"q0702",d:702,n:"Dedenne",o:"#0702 Dedenne/pq0702.obj",s:"pq0702S.png"},
+{id:"q0707",d:707,n:"Klefki",o:"#0707 Klefki/pq0707.obj",s:"pq0707S.png"},
+{id:"q0710",d:710,n:"Pumpkaboo",o:"#0710 Pumpkaboo/pq0710.obj",s:"pq0710S.png"},
+{id:"q0711",d:711,n:"Gourgeist",o:"#0711 Gourgeist/pq0711.obj",s:"pq0711S.png"},
+{id:"q0718",d:718,n:"Zygarde",o:"#0718 Zygarde/pq0718.obj",s:"pq0718S.png"},
+{id:"q0736",d:736,n:"Grubbin",o:"#0736 Grubbin/pq0736.obj",s:"pq0736S.png"},
+{id:"q0737",d:737,n:"Charjabug",o:"#0737 Charjabug/pq0737.obj",s:"pq0737S.png"},
+{id:"q0738",d:738,n:"Vikavolt",o:"#0738 Vikavolt/pq0738.obj",s:"pq0738S.png"},
+{id:"q0767",d:767,n:"Wimpod",o:"#0767 Wimpod/pq0767.obj",s:"pq0767S.png"},
+{id:"q0768",d:768,n:"Golisopod",o:"#0768 Golisopod/pq0768.obj",s:"pq0768S.png"},
+{id:"q0769",d:769,n:"Sandygast",o:"#0769 Sandygast/pq0769.obj",s:"pq0769S.png"},
+{id:"q0770",d:770,n:"Palossand",o:"#0770 Palossand/pq0770.obj",s:"pq0770S.png"},
+{id:"q0771",d:771,n:"Pyukumuku",o:"#0771 Pyukumuku/pq0771.obj",s:"pq0771S.png"},
+{id:"q0778",d:778,n:"Mimikyu",o:"#0778 Mimikyu/pq0778.obj",s:"pq0778S.png"},
+{id:"q0791",d:791,n:"Solgaleo",o:"#0791 Solgaleo/pq0791.obj",s:"pq0791S.png"},
+{id:"q0792",d:792,n:"Lunala",o:"#0792 Lunala/pq0792.obj",s:"pq0792S.png"},
+{id:"q0800",d:800,n:"Necrozma",o:"#0800 Necrozma/pq0800.obj",s:"pq0800S.png"},
+{id:"q0807",d:807,n:"Zeraora",o:"#0807 Zeraora/pq0807.obj",s:"pq0807S.png"},
+{id:"q0845",d:845,n:"Cramorant",o:"#0845 Cramorant/pq0845.obj",s:"pq0845S.png"},
+{id:"q0878",d:878,n:"Cufant",o:"#0878 Cufant/pq0878.obj",s:"pq0878S.png"},
+{id:"q0879",d:879,n:"Copperajah",o:"#0879 Copperajah/pq0879.obj",s:"pq0879S.png"},
+{id:"q0884",d:884,n:"Duraludon",o:"#0884 Duraludon/pq0884.obj",s:"pq0884S.png"},
+{id:"q0885",d:885,n:"Dreepy",o:"#0885 Dreepy/pq0885.obj",s:"pq0885S.png"},
+{id:"q0886",d:886,n:"Drakloak",o:"#0886 Drakloak/pq0886.obj",s:"pq0886S.png"},
+{id:"q0887",d:887,n:"Dragapult",o:"#0887 Dragapult/pq0887.obj",s:"pq0887S.png"},
+{id:"q0888",d:888,n:"Zacian",o:"#0888 Zacian/pq0888c.obj",s:"pq0888cS.png"},
+{id:"q0889",d:889,n:"Zamazenta",o:"#0889 Zamazenta/pq0889c.obj",s:"pq0889cS.png"},
+{id:"q0890",d:890,n:"Eternatus",o:"#0890 Eternatus/pq0890.obj",s:"pq0890S.png"},
+{id:"q0906",d:906,n:"Sprigatito",o:"#0906 Sprigatito/pq0906.obj",s:"pq0906S.png"},
+{id:"q0907",d:907,n:"Floragato",o:"#0907 Floragato/pq0907.obj",s:"pq0907S.png"},
+{id:"q0908",d:908,n:"Meowscarada",o:"#0908 Meowscarada/pq0908.obj",s:"pq0908S.png"},
+{id:"q0909",d:909,n:"Fuecoco",o:"#0909 Fuecoco/pq0909.obj",s:"pq0909S.png"},
+{id:"q0910",d:910,n:"Crocalor",o:"#0910 Crocalor/pq0910.obj",s:"pq0910S.png"},
+{id:"q0911",d:911,n:"Skeledirge",o:"#0911 Skeledirge/pq0911.obj",s:"pq0911S.png"},
+{id:"q0912",d:912,n:"Quaxly",o:"#0912 Quaxly/pq0912.obj",s:"pq0912S.png"},
+{id:"q0913",d:913,n:"Quaxwell",o:"#0913 Quaxwell/pq0913.obj",s:"pq0913S.png"},
+{id:"q0914",d:914,n:"Quaquaval",o:"#0914 Quaquaval/pq0914.obj",s:"pq0914S.png"},
+{id:"q0924",d:924,n:"Tandemaus",o:"#0924 Tandemaus/pq0924.obj",s:"pq0924S.png"},
+{id:"q0925",d:925,n:"Maushold",o:"#0925 Maushold/pq0925fof.obj",s:"pq0925fofS.png"},
+{id:"q0935",d:935,n:"Charcadet",o:"#0935 Charcadet/pq0935.obj",s:"pq0935S.png"},
+{id:"q0936",d:936,n:"Armarouge",o:"#0936 Armarouge/pq0936.obj",s:"pq0936S.png"},
+{id:"q0937",d:937,n:"Ceruledge",o:"#0937 Ceruledge/pq0937.obj",s:"pq0937S.png"},
+{id:"q0957",d:957,n:"Tinkatink",o:"#0957 Tinkatink/pq0957.obj",s:"pq0957S.png"},
+{id:"q0958",d:958,n:"Tinkatuff",o:"#0958 Tinkatuff/pq0958.obj",s:"pq0958S.png"},
+{id:"q0959",d:959,n:"Tinkaton",o:"#0959 Tinkaton/pq0959.obj",s:"pq0959S.png"},
+{id:"q0977",d:977,n:"Dondozo",o:"#0977 Dondozo/pq0977.obj",s:"pq0977S.png"},
+{id:"q0978_curly",d:978,n:"Tatsugiri (Curly)",o:"#0978 Tatsugiri (Curly)/pq0978c.obj",s:"pq0978cS.png"},
+{id:"q0978_droopy",d:978,n:"Tatsugiri (Droopy)",o:"#0978 Tatsugiri (Droopy)/pq0978d.obj",s:"pq0978dS.png"},
+{id:"q0978_stretchy",d:978,n:"Tatsugiri (Stretchy)",o:"#0978 Tatsugiri (Stretchy)/pq0978s.obj",s:"pq0978sS.png"},
+{id:"q0980",d:980,n:"Clodsire",o:"#0980 Clodsire/pq0980.obj",s:"pq0980S.png"},
+{id:"q0999",d:999,n:"Gimmighoul",o:"#0999 Gimmighoul/pq0999cf.obj",s:"pq0999cfS.png"},
+{id:"q1000",d:1000,n:"Gholdengo",o:"#1000 Gholdengo/pq1000.obj",s:"pq1000S.png"},
+{id:"q1007",d:1007,n:"Koraidon",o:"#1007 Koraidon/pq1007.obj"},
+{id:"q1008",d:1008,n:"Miraidon",o:"#1008 Miraidon/pq1008.obj"},
+// HAND-ADDED: the Mewtwo-clone variants (separate "(Clone)" folders, pq-code scheme) as toggleable forms.
+{id:"q0003_clone",d:3,n:"Venusaur (Clone)",o:"#0003 Venusaur (Clone)/pq0003c.obj"},
+{id:"q0006_clone",d:6,n:"Charizard (Clone)",o:"#0006 Charizard (Clone)/pq0006c.obj"},
+{id:"q0009_clone",d:9,n:"Blastoise (Clone)",o:"#0009 Blastoise (Clone)/pq0009c.obj"},
+];
+
+/* ============================================================ local model library
+
+   The 426-entry dex index is EMBEDDED in this file, so the search box works with no network
+   at all. The mesh bytes are read from the user's own folder instead: 90 MB of OBJ/MTL/PNG
+   has no business being inlined into an HTML file, and an inlined copy would go stale the
+   moment the folder changes. GitHub is kept only as a last resort when no folder is picked.
+
+   Two ways in, because they fail in different situations:
+     showDirectoryPicker  — the handle is stored in IndexedDB, so the folder is remembered
+                            between sessions and re-attaches on load with one permission grant
+     <input webkitdirectory> — works anywhere, but has to be re-picked each session
+   Both end up as the same Map: lowercased relative path -> File or FileSystemFileHandle.
+*/
+let LIB = null;
+
+const IDB_NAME = "quest3mf", IDB_STORE = "handles";
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(IDB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(IDB_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbPut(k, v) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const t = db.transaction(IDB_STORE, "readwrite");
+    t.objectStore(IDB_STORE).put(v, k);
+    t.oncomplete = () => res();
+    t.onerror = () => rej(t.error);
+  });
+}
+async function idbGet(k) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const t = db.transaction(IDB_STORE, "readonly");
+    const q = t.objectStore(IDB_STORE).get(k);
+    q.onsuccess = () => res(q.result);
+    q.onerror = () => rej(q.error);
+  });
+}
+
+const LIB_EXT = /\.(obj|mtl|png)$/i;      // .ply is 12 MB of the folder and is never read
+async function walkHandles(dir, prefix, out, depth) {
+  if (depth > 6) return;
+  for await (const [name, h] of dir.entries()) {
+    const rel = prefix + name;
+    if (h.kind === "file") { if (LIB_EXT.test(name)) out.set(rel.toLowerCase(), h); }
+    else await walkHandles(h, rel + "/", out, depth + 1);
+  }
+}
+const asFile = (v) => (v && typeof v.getFile === "function") ? v.getFile() : v;
+
+// Model paths in the dex are relative to the "Pokemon Quest 3D Models" folder. Whether the
+// user picked that folder or its parent, both spellings are indexed so either works.
+function indexBoth(map, rel, val) {
+  const k = rel.toLowerCase();
+  map.set(k, val);
+  const cut = k.indexOf("/");
+  if (cut > 0) map.set(k.slice(cut + 1), val);
+}
+
+function setLib(files, label) {
+  LIB = { files, label };
+  const n = [...files.keys()].filter(k => k.endsWith(".obj")).length;
+  $("#lib-status").innerHTML =
+    `<span style="color:var(--ok)">✓ ${label}</span> — ${files.size} files indexed, ${n} models. GitHub not needed.`;
+  log(`Local library: ${files.size} files from "${label}"`, "ok");
+}
+
+async function pickLibraryFolder() {
+  if (!window.showDirectoryPicker) { $("#lib-input").click(); return; }
+  let dir;
+  try { dir = await window.showDirectoryPicker({ id: "quest-models", mode: "read" }); }
+  catch (e) { if (e && e.name === "AbortError") return; $("#lib-input").click(); return; }
+  $("#lib-status").textContent = "Indexing folder…";
+  const files = new Map();
+  await walkHandles(dir, "", files, 0);
+  const merged = new Map();
+  for (const [k, v] of files) indexBoth(merged, k, v);
+  setLib(merged, dir.name);
+  try { await idbPut("libDir", dir); } catch { /* not persistable here; folder still usable */ }
+}
+
+async function restoreLibraryFolder() {
+  if (!window.showDirectoryPicker) return false;
+  let dir;
+  try { dir = await idbGet("libDir"); } catch { return false; }
+  if (!dir) return false;
+  try {
+    let perm = await dir.queryPermission({ mode: "read" });
+    if (perm !== "granted") perm = await dir.requestPermission({ mode: "read" });
+    if (perm !== "granted") {
+      $("#lib-status").textContent = "A folder is remembered — click to re-grant access.";
+      return false;
+    }
+    $("#lib-status").textContent = "Re-indexing remembered folder…";
+    const files = new Map();
+    await walkHandles(dir, "", files, 0);
+    const merged = new Map();
+    for (const [k, v] of files) indexBoth(merged, k, v);
+    setLib(merged, dir.name + " (remembered)");
+    return true;
+  } catch { return false; }
+}
+
+$("#lib-pick").onclick = () => pickLibraryFolder();
+$("#lib-input").onchange = (e) => {
+  const files = new Map();
+  for (const f of e.target.files) {
+    const rel = f.webkitRelativePath || f.name;
+    if (LIB_EXT.test(rel)) indexBoth(files, rel, f);
+  }
+  if (!files.size) { $("#lib-status").textContent = "No .obj/.mtl/.png found in that folder."; return; }
+  setLib(files, (e.target.files[0].webkitRelativePath || "").split("/")[0] || "picked folder");
+};
+
+function libCtx(label, objPath) {
+  const dir = objPath.slice(0, objPath.lastIndexOf("/") + 1);
+  const objName = objPath.slice(objPath.lastIndexOf("/") + 1);
+  const grab = async (name) => {
+    const v = LIB.files.get((dir + name).toLowerCase());
+    return v ? await asFile(v) : null;
+  };
+  return {
+    label, objName,
+    getText: async (n) => { const f = await grab(n); return f ? f.text() : null; },
+    getBytes: async (n) => { const f = await grab(n); return f ? new Uint8Array(await f.arrayBuffer()) : null; },
+  };
+}
+
+/* ============================================================ GitHub source */
+const GH_RAW = "https://raw.githubusercontent.com/PocketArcade64/Pokemon-Rumble-Run/main/";
+const QUEST_ROOT = "Pokemon Quest 3D Models/";
+const encPath = (p) => p.split("/").map(encodeURIComponent).join("/");
+const ghCache = new Map();
+async function ghFetch(path, asBytes) {
+  const key = (asBytes ? "b:" : "t:") + path;
+  if (ghCache.has(key)) return ghCache.get(key);
+  const r = await fetch(GH_RAW + encPath(path));
+  const val = !r.ok ? null : (asBytes ? new Uint8Array(await r.arrayBuffer()) : await r.text());
+  ghCache.set(key, val);
+  return val;
+}
+function ghCtx(label, objPath) {
+  const dir = objPath.slice(0, objPath.lastIndexOf("/") + 1);
+  const objName = objPath.slice(objPath.lastIndexOf("/") + 1);
+  return {
+    label, objName,
+    getText: (name) => ghFetch(QUEST_ROOT + dir + name, false),
+    getBytes: (name) => ghFetch(QUEST_ROOT + dir + name, true),
+  };
+}
+let DEX = [], dexSel = null;
+// The index is embedded, so the list is populated before anything touches the network. The
+// bytes come from the picked folder when there is one, and only otherwise from GitHub.
+function loadDex() {
+  DEX = QUEST_DEX_EMBEDDED;
+  $("#dex-search").disabled = false;
+  $("#dex-search").placeholder = `Search ${DEX.length} models… (e.g. Pikachu)`;
+  $("#gh-status").textContent =
+    `${DEX.length} models in the built-in index. Pick your models folder to work offline.`;
+  renderDexList("");
+}
+const dexCtx = (label, objPath) =>
+  (LIB && LIB.files.has(objPath.toLowerCase())) ? libCtx(label, objPath) : ghCtx(label, objPath);
+function renderDexList(q) {
+  const list = $("#dex-list");
+  list.innerHTML = "";
+  const ql = q.toLowerCase();
+  const hits = DEX.filter(e => e.n.toLowerCase().includes(ql) || String(e.d).padStart(4, "0").includes(ql)).slice(0, 40);
+  for (const e of hits) {
+    const d = document.createElement("div");
+    d.className = "dex-item" + (dexSel === e ? " sel" : "");
+    d.textContent = `#${String(e.d).padStart(4, "0")} ${e.n}`;
+    d.onclick = () => { dexSel = e; renderDexList($("#dex-search").value); $("#gh-convert").disabled = false; };
+    list.appendChild(d);
+  }
+}
+$("#dex-search").addEventListener("input", (e) => renderDexList(e.target.value));
+$("#gh-convert").onclick = async () => {
+  if (!dexSel) return;
+  const btn = $("#gh-convert");
+  btn.disabled = true;
+  try {
+    const shinyWanted = $("#gh-shiny").checked;
+    let objPath = dexSel.o, shinySwap = false, label = dexSel.n;
+    const isSchemeB = /^pq\d{4}/.test(objPath.split("/").pop());
+    if (shinyWanted) {
+      if (isSchemeB) {
+        shinySwap = true;    // texture swap on same mesh
+      } else if (dexSel.s) { // separate shiny model: derive obj from shiny texture name
+        objPath = objPath.slice(0, objPath.lastIndexOf("/") + 1) + dexSel.s.replace(/\.png$/i, ".obj");
+        label += " (Shiny model)";
+      } else {
+        throw new Error(`${dexSel.n}: no shiny variant listed`);
+      }
+    }
+    log(`Converting ${label}${shinySwap ? " (shiny swap)" : ""} from GitHub…`);
+    const res = await convertModel(dexCtx(dexSel.n, objPath), { shiny: shinySwap });
+    addResultCard(res);
+    log(`${res.title}: done — ${res.nTris} tris, ${res.palette.length} colors, ${res.dims.map(d => d.toFixed(1)).join(" × ")} mm`, "ok");
+  } catch (e) {
+    log("Failed: " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+/* ============================================================ local drop source */
+const dz = $("#dropzone");
+dz.onclick = () => $("#file-input").click();
+$("#file-input").onchange = (e) => handleLocalFiles([...e.target.files].map(f => [f.name, f]));
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("hover"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("hover"));
+dz.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  dz.classList.remove("hover");
+  const pairs = [];
+  const walk = async (entry, prefix) => {
+    if (entry.isFile) {
+      const f = await new Promise((res, rej) => entry.file(res, rej));
+      pairs.push([prefix + entry.name, f]);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      let batch;
+      do {
+        batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+        for (const sub of batch) await walk(sub, prefix + entry.name + "/");
+      } while (batch.length);
+    }
+  };
+  const items = [...e.dataTransfer.items];
+  for (const it of items) {
+    const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
+    if (entry) await walk(entry, "");
+    else { const f = it.getAsFile(); if (f) pairs.push([f.name, f]); }
+  }
+  handleLocalFiles(pairs);
+});
+async function handleLocalFiles(pairs) {
+  if (!pairs.length) return;
+  // exact-case lookup first; case-insensitive fallback (OneDrive names are the stored truth)
+  const byPath = new Map(pairs);
+  const byLower = new Map(pairs.map(([p, f]) => [p.toLowerCase(), f]));
+  const getFile = (dir, name) => byPath.get(dir + name) || byLower.get((dir + name).toLowerCase()) || null;
+  const objs = pairs.filter(([p]) => p.toLowerCase().endsWith(".obj"));
+  if (!objs.length) { log("No .obj files in the dropped set.", "err"); return; }
+  log(`Found ${objs.length} model(s) in dropped files.`);
+  for (const [path] of objs) {
+    const dir = path.slice(0, path.lastIndexOf("/") + 1);
+    const objName = path.slice(path.lastIndexOf("/") + 1);
+    const label = objName.replace(/\.obj$/i, "");
+    const ctx = {
+      label, objName,
+      getText: async (n) => { const f = getFile(dir, n); return f ? f.text() : null; },
+      getBytes: async (n) => { const f = getFile(dir, n); return f ? new Uint8Array(await f.arrayBuffer()) : null; },
+    };
+    try {
+      addResultCard(await convertModel(ctx));
+    } catch (e) {
+      log(`${label} failed: ${e.message}`, "err");
+      continue;
+    }
+    // scheme-B models with a shiny atlas present → also convert the shiny variant
+    if (/^pq\d{4}/.test(objName)) {
+      const base = objName.replace(/\.obj$/i, "");
+      if (getFile(dir, base + "S.png") || getFile(dir, base + "s.png")) {
+        try { addResultCard(await convertModel(ctx, { shiny: true })); }
+        catch (e) { log(`${label} (shiny) failed: ${e.message}`, "err"); }
+      }
+    }
+  }
+}
+
+loadDex();
+restoreLibraryFolder();
+</script>
+</body>
+</html>
