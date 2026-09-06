@@ -1,0 +1,37 @@
+Pokemon Depths
+
+Here is my idea and the attached doc is what Claude built when ai asked it to help me better articulate this idea so Claude can plan how to build this HTML game made for an iPhone to be hosted on GitHub
+
+Please reference the other already built game “Pokemon Rumble Run” and use the already existing Pokemon quest Pokemon models and the Pokemon quest pokeball models
+
+Only the Pokemon that have quest models are available to use in this game.
+
+For this new game, called Pokemon Depths, I want it to be like a basic roguelike where the title screen has a button called start run and when you begin a run, you get a choice of 3 starter Pokemon out of a larger pool (Kanto starters, Johto starters, …) 
+
+The game has an overhead camera view just the Pokemon Rumble Run and you control your Pokemon to move throughout a procedurally generated 3d environment (like Pokemon Mystery Dungeon) 
+- the more you explore, the more of the map gets unveiled on the top left (mini map) you can also click the menu bottom on the top right to pause which shows a more detailed view of the map) 
+
+You can find items throughout the dungeon that boost your power
+- What should some power ups be (one that evolves?, one that heals?, poke balls, item that reveals the floor plan, item that reveals all items and Pokemon locations on that floor, 
+
+At the end of each floor is a Team Rocket Grunt on a space blocking the stairs upwards and when you bump into them, it begins a battle where your Pokemon automatically attack (basic Pokemon do 5 damage, Stage 1 Pokemon do 10, Stage 2 Pokemon do 15 damage, and legendaries do 20 damage per attack. Please take into account super effective types (no resistances or immunities). The team rocket grunts on floors 1-4 have randomized pokemon but always 1 Team Rocket themed Pokemon like Weezing or Arbok, etc. Make the floors get progressively more difficult but not too hard
+- on the final floor is Giovanni and he always has Mewtwo on his team, 1 random legendary, 1 legendary bird, then 3 other random fully evolved Pokemon
+
+Each run has 5 randomized floors but there is a pool of 10 themed floors selected at random. The themes are Forest, Cavern, Volcano, Ice, Water, Ruins, Rocket Warehouse, Desert, Swamp, Crystal Caves) 
+
+You can have a team of 6 Pokemon max and throughout the floors are randomly wandering Pokemon you can add to your team
+
+When you run into a Pokemon, it starts a catching mini game exactly like Pokemon Go where you throw the Pokemon quest modeled poke balls towards the Pokemon quest model that moves around.
+
+Also there are wandering Pokemon with a purple cloud around them that if you run into them, they attack you but if you win in a battle, you can catch them Pokemon go mini game and add them to your team
+
+I will add music from Pokemon Mystery Dungeon Explorers of Sky 
+
+After you see the Pokemon quest models, create an excel spreadsheet for the Pokemon that have quest models and labels them by their stage, if/who they evolve into, their types, and if they are a starter that can appear in the initial selection. 
+
+Under the mini map on the top left is a bag icon that when you click on it it passes the game and opens a new screen that shows your team of 6 at the top of the screen and your collected items in a stylized bag below in a scroll menu with 5 columns (1 item in each)
+
+This game will be made to run and optimized exactly for iOS iPhone 16 Pro screen size with no top or bottom obstruction and will be hosted on GitHub 
+
+Add a glossary button that explains all the available power ups
+Add a settings button that allows you to change the music and sounds effects volume
