@@ -8,8 +8,10 @@ Only the Pokemon that have quest models are available to use in this game.
 
 For this new game, called Pokemon Depths, I want it to be like a basic roguelike where the title screen has a button called start run and when you begin a run, you get a choice of 3 starter Pokemon out of a larger pool (Kanto starters, Johto starters, …) 
 
-The game has an overhead camera view just the Pokemon Rumble Run and you control your Pokemon to move throughout a procedurally generated 3d environment (like Pokemon Mystery Dungeon) 
+The game has an overhead camera view just the Pokemon Rumble Run and you control your Pokemon to move throughout a procedurally generated 3d environment (like Pokemon Mystery Dungeon, but without the long hallways) 
 - the more you explore, the more of the map gets unveiled on the top left (mini map) you can also click the menu bottom on the top right to pause which shows a more detailed view of the map) 
+
+in the settings give multiple options how to move - a joystick on the bottom left or you can tap wjere your pokemon moves
 
 You can find items throughout the dungeon that boost your power
 - What should some power ups be (one that evolves?, one that heals?, poke balls, item that reveals the floor plan, item that reveals all items and Pokemon locations on that floor, 
